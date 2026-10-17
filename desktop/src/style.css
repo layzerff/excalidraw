@@ -599,7 +599,8 @@ select {
   font-size: 11px;
 }
 .files > .actions {
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .storage-path {
   overflow-wrap: anywhere;

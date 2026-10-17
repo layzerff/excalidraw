@@ -109,6 +109,7 @@ function App() {
   const [presentationReady, setPresentationReady] = useState(false);
   const [layers, setLayers] = useState(false);
   const [autoPlay, setAutoPlay] = useState(false);
+  const [dwellTime, setDwellTime] = useState(3000);
   const [editorEpoch, setEditorEpoch] = useState(0);
   const [editorReady, setEditorReady] = useState(false);
   const [storageInfo, setStorageInfo] = useState(null);
@@ -131,6 +132,12 @@ function App() {
     savedView = useRef(null),
     inkApi = useRef(null);
   const presentationTimer = useRef(null);
+  const inkStyle = useRef({
+    currentItemStrokeColor: '#e03131',
+    currentItemStrokeWidth: 2,
+    currentItemOpacity: 100,
+    currentItemBackgroundColor: 'transparent',
+  });
   const latest = useRef({});
   const clearInk = () => {
     inkApi.current?.updateScene({
@@ -462,10 +469,18 @@ function App() {
     }
     const timer = ownerWindow.setTimeout(
       () => latest.current.step(1),
-      duration + 3000,
+      duration + dwellTime,
     );
     return () => ownerWindow.clearTimeout(timer);
-  }, [presenting, autoPlay, presentationReady, currentScene, duration, scenes]);
+  }, [
+    presenting,
+    autoPlay,
+    presentationReady,
+    currentScene,
+    duration,
+    dwellTime,
+    scenes,
+  ]);
   useEffect(() => {
     if (presenting && pen)
       inkApi.current?.setActiveTool({ type: 'freedraw', locked: true });
@@ -1201,6 +1216,7 @@ function App() {
             <Excalidraw
               langCode="zh-CN"
               viewModeEnabled={!pen}
+              key={currentScene}
               handleKeyboardGlobally
               initialData={{
                 elements: [],
@@ -1208,6 +1224,7 @@ function App() {
                   viewBackgroundColor: 'transparent',
                   currentItemStrokeColor: '#e03131',
                   currentItemStrokeWidth: 2,
+                  ...inkStyle.current,
                   activeTool: { type: 'freedraw', locked: true },
                   ...savedView.current,
                 },
@@ -1216,6 +1233,12 @@ function App() {
                 inkApi.current = value;
               }}
               onChange={(elements, state) => {
+                inkStyle.current = {
+                  currentItemStrokeColor: state.currentItemStrokeColor,
+                  currentItemStrokeWidth: state.currentItemStrokeWidth,
+                  currentItemOpacity: state.currentItemOpacity,
+                  currentItemBackgroundColor: state.currentItemBackgroundColor,
+                };
                 setInkCount(elements.filter((e) => !e.isDeleted).length);
                 if (!presentation.current || !api.current) return;
                 const current = api.current.getAppState();
@@ -1271,7 +1294,20 @@ function App() {
                 ))}
               </select>
             </label>
-            <span className="auto-hint">自动停留 3 秒</span>
+            <label className="auto-hint">
+              停留{' '}
+              <select
+                aria-label="自动演示停留时间"
+                value={dwellTime}
+                onChange={(e) => setDwellTime(Number(e.target.value))}
+              >
+                {[1000, 2000, 3000, 5000, 10000, 15000, 30000].map((ms) => (
+                  <option key={ms} value={ms}>
+                    {ms / 1000} 秒
+                  </option>
+                ))}
+              </select>
+            </label>
             <button
               aria-label="上一场景"
               disabled={scenes.findIndex((s) => s.id === currentScene) <= 0}

@@ -68,6 +68,17 @@ try {
     return result;
   });
   expect(fonts).toEqual({ Excalifont: true, Virgil: true, Xiaolai: true });
+  const newBoardBox = await page
+    .getByRole('button', { name: '＋ 白板', exact: true })
+    .boundingBox();
+  const saveBox = await page
+    .getByRole('button', { name: '保存', exact: true })
+    .boundingBox();
+  const saveAsBox = await page
+    .getByRole('button', { name: '另存为', exact: true })
+    .boundingBox();
+  expect(saveBox.y).toBeGreaterThan(newBoardBox.y + newBoardBox.height);
+  expect(saveAsBox.y).toBe(saveBox.y);
   await expect(
     page
       .locator('.files > .actions')
@@ -239,6 +250,8 @@ try {
   for (const speed of ['500', '1000', '1500', '2000'])
     await page.getByLabel('演示移动时长').selectOption(speed);
   await page.getByLabel('演示移动时长').selectOption('500');
+  await expect(page.getByLabel('自动演示停留时间')).toHaveValue('3000');
+  await page.getByLabel('自动演示停留时间').selectOption('1000');
   await page.getByRole('button', { name: '自动演示', exact: true }).click();
   await expect(page.locator('.presentation-controls')).toContainText('2 / 2', {
     timeout: 7000,
