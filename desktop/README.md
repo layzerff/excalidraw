@@ -28,6 +28,9 @@ npm start
 - Import `.excalidraw` or full `.canvas.json`; export both. Standard `.excalidraw` excludes custom navigation scenes; full documents and workspace backups include scenes, images and document library.
 - Workspace backup to JSON; restore validates the tree and imports into a new folder with fresh document IDs. Existing documents remain intact. Active-document preference is not replaced when merging backups.
 - Scene Manager: manually draw a region, capture current viewport, rename, drag to reorder, keyboard-accessible move-up button, redraw bounds, delete scene. Default 2.2-second navigation with 1.2/3.5/5-second alternatives, via official `updateScene` viewport fields and `CaptureUpdateAction.NEVER`. Pointer, wheel or Escape interrupts the animation.
+- Scene updates: 0.5-second option, compact rows, insertion markers, edge scrolling and a persistent split-panel toggle. Fullscreen presentation provides arrows, temporary ink with color/width, and clear/exit controls. Ink clears on scene changes and exit without modifying elements.
+- PDF: entire board or one cropped page per scene, exported as high-resolution PNGs in landscape A4 pages (8192-pixel longest edge cap, up to 200 pages). Text is rasterized, not searchable. JSON remains the editable backup format.
+- Fonts/library: bundled Excalifont, classic Virgil and Chinese Xiaolai fallback; font selection uses the original canvas font picker. Local `.excalidrawlib` import merges through the official API. Arbitrary custom font upload remains pending.
 
 ## Data and recovery
 

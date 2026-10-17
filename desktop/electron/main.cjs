@@ -53,6 +53,73 @@ else {
         trash: (...args) => store.trash(...args),
         getSetting: (key) => store.getSetting(key),
         setSetting: (...args) => store.setSetting(...args),
+        async importLibrary() {
+          const result = await dialog.showOpenDialog(win, {
+            properties: ['openFile'],
+            filters: [
+              {
+                name: 'Excalidraw 素材库',
+                extensions: ['excalidrawlib', 'json'],
+              },
+            ],
+          });
+          if (result.canceled) return null;
+          if (fs.statSync(result.filePaths[0]).size > 50 * 1024 * 1024)
+            throw new Error('素材库超过 50 MB');
+          const value = JSON.parse(
+            fs.readFileSync(result.filePaths[0], 'utf8'),
+          );
+          if (
+            value.type !== 'excalidrawlib' ||
+            !Array.isArray(value.libraryItems || value.library)
+          )
+            throw new Error('请选择有效的 .excalidrawlib 素材库');
+          return value;
+        },
+        async exportPDF(title, pages) {
+          if (
+            !Array.isArray(pages) ||
+            !pages.length ||
+            pages.length > 200 ||
+            pages.some(
+              (p) =>
+                typeof p !== 'string' ||
+                !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(p),
+            )
+          )
+            throw new Error('PDF 页面无效（最多 200 页）');
+          const result = await dialog.showSaveDialog(win, {
+            defaultPath: `${String(title).replace(/[\\/:*?"<>|]/g, '_')}.pdf`,
+            filters: [{ name: 'PDF', extensions: ['pdf'] }],
+          });
+          if (result.canceled) return false;
+          const printWindow = new BrowserWindow({
+            show: false,
+            webPreferences: {
+              sandbox: true,
+              contextIsolation: true,
+              nodeIntegration: false,
+            },
+          });
+          try {
+            const html = `<html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'"><style>@page{size:A4 landscape;margin:0}body{margin:0}section{width:297mm;height:210mm;display:flex;align-items:center;justify-content:center;break-after:page}section:last-child{break-after:auto}img{max-width:287mm;max-height:200mm;object-fit:contain}</style></head><body>${pages.map((p) => `<section><img src="${p}"></section>`).join('')}</body></html>`;
+            await printWindow.loadURL(
+              `data:text/html;charset=utf-8,${encodeURIComponent(html)}`,
+            );
+            const pdf = await printWindow.webContents.printToPDF({
+              landscape: true,
+              printBackground: true,
+              preferCSSPageSize: true,
+              margins: { top: 0, bottom: 0, left: 0, right: 0 },
+            });
+            const temporary = `${result.filePath}.${process.pid}.tmp`;
+            fs.writeFileSync(temporary, pdf, { flag: 'wx' });
+            fs.renameSync(temporary, result.filePath);
+            return true;
+          } finally {
+            printWindow.destroy();
+          }
+        },
         async exportDocument(id, data, native) {
           payload(data);
           const node = store.node(id);
@@ -127,7 +194,8 @@ else {
         callback({ cancel: /^https?:|^wss?:/.test(details.url) }),
       );
       session.defaultSession.setPermissionRequestHandler(
-        (_wc, _permission, callback) => callback(false),
+        (wc, permission, callback) =>
+          callback(permission === 'fullscreen' && wc === win?.webContents),
       );
       function createWindow() {
         win = new BrowserWindow({

@@ -5,6 +5,7 @@ import {
   CaptureUpdateAction,
   serializeAsJSON,
   viewportCoordsToSceneCoords,
+  exportToBlob,
 } from '@excalidraw/excalidraw';
 import '@excalidraw/excalidraw/index.css';
 import './style.css';
@@ -17,8 +18,29 @@ import {
 
 const root = document.getElementById('root');
 const ownerWindow = root.ownerDocument.defaultView;
-ownerWindow.EXCALIDRAW_ASSET_PATH = './excalidraw-assets/';
 const bridge = ownerWindow.workspace;
+function PanelIcon() {
+  return (
+    <svg
+      width="22"
+      height="18"
+      viewBox="0 0 24 18"
+      fill="none"
+      aria-hidden="true"
+    >
+      <rect
+        x="1"
+        y="1"
+        width="22"
+        height="16"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <path d="M17 1v16" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
 function App() {
   const [nodes, setNodes] = useState([]),
     [doc, setDoc] = useState(null),
@@ -32,6 +54,19 @@ function App() {
   const [duration, setDuration] = useState(2200),
     [trash, setTrash] = useState(false),
     [form, setForm] = useState(null);
+  const [sidebar, setSidebar] = useState(true);
+  const [presenting, setPresenting] = useState(false);
+  const [currentScene, setCurrentScene] = useState(null);
+  const [pen, setPen] = useState(false);
+  const [penColor, setPenColor] = useState('#e03131');
+  const [penWidth, setPenWidth] = useState(3);
+  const [strokes, setStrokes] = useState([]);
+  const [dropAt, setDropAt] = useState(null);
+  const presentation = useRef(false),
+    savedView = useRef(null),
+    ink = useRef(null);
+  const presentationTimer = useRef(null);
+  const latest = useRef({});
   const api = useRef(null),
     active = useRef(null),
     dirty = useRef(false),
@@ -117,6 +152,7 @@ function App() {
     run(async () => {
       const list = await refresh();
       const saved = await bridge.invoke('getSetting', 'activeDocument');
+      setSidebar((await bridge.invoke('getSetting', 'sceneSidebar')) !== false);
       const id =
         list.find((n) => n.id === saved && !n.deleted)?.id ||
         list.find((n) => n.kind === 'document' && !n.deleted)?.id;
@@ -132,6 +168,13 @@ function App() {
       }
     };
     const key = (e) => {
+      if (presentation.current) {
+        if (e.key === 'Escape') latest.current.exitPresentation();
+        if (e.key === 'ArrowRight') latest.current.step(1);
+        if (e.key === 'ArrowLeft') latest.current.step(-1);
+        if (['Escape', 'ArrowRight', 'ArrowLeft'].includes(e.key))
+          e.preventDefault();
+      }
       if (e.key === 'Escape') {
         stop();
         setSelecting(null);
@@ -176,6 +219,8 @@ function App() {
   const navigate = (scene) => {
     if (!api.current) return;
     stop();
+    setCurrentScene(scene.id);
+    setStrokes([]);
     const state = api.current.getAppState();
     const from = {
         zoom: state.zoom.value,
@@ -198,6 +243,134 @@ function App() {
       frame.current = t < 1 ? ownerWindow.requestAnimationFrame(animate) : null;
     };
     frame.current = ownerWindow.requestAnimationFrame(animate);
+  };
+  const exitPresentation = async () => {
+    ownerWindow.clearTimeout(presentationTimer.current);
+    stop();
+    presentation.current = false;
+    setPresenting(false);
+    setPen(false);
+    setStrokes([]);
+    if (root.ownerDocument.fullscreenElement)
+      await root.ownerDocument.exitFullscreen();
+    ownerWindow.requestAnimationFrame(() =>
+      ownerWindow.requestAnimationFrame(() => {
+        if (savedView.current)
+          api.current?.updateScene({
+            appState: savedView.current,
+            captureUpdate: CaptureUpdateAction.NEVER,
+          });
+      }),
+    );
+  };
+  const step = (delta) => {
+    const index = scenes.findIndex((s) => s.id === currentScene);
+    const next = scenes[index + delta];
+    if (next) navigate(next);
+  };
+  latest.current = { exitPresentation, step };
+  useEffect(() => {
+    const changedFullscreen = () => {
+      if (!root.ownerDocument.fullscreenElement && presentation.current)
+        latest.current.exitPresentation();
+    };
+    root.ownerDocument.addEventListener('fullscreenchange', changedFullscreen);
+    return () =>
+      root.ownerDocument.removeEventListener(
+        'fullscreenchange',
+        changedFullscreen,
+      );
+  }, []);
+  const beginPresentation = async () => {
+    flush();
+    const state = api.current.getAppState();
+    savedView.current = {
+      scrollX: state.scrollX,
+      scrollY: state.scrollY,
+      zoom: state.zoom,
+    };
+    await root.requestFullscreen();
+    presentation.current = true;
+    setPresenting(true);
+    presentationTimer.current = ownerWindow.setTimeout(
+      () => navigate(scenes.find((s) => s.id === currentScene) || scenes[0]),
+      150,
+    );
+  };
+  const toggleSidebar = () => {
+    setSidebar(!sidebar);
+    run(() => bridge.invoke('setSetting', 'sceneSidebar', !sidebar));
+  };
+  const exportPDF = async (byScenes) => {
+    flush();
+    stop();
+    setBusy(true);
+    try {
+      const data = active.current.data;
+      const regions = byScenes ? scenes.map((s) => s.rect) : [null];
+      const pages = [];
+      for (const rect of regions) {
+        const elements = [...data.elements];
+        if (rect)
+          elements.push({
+            id: '__pdf_region__',
+            type: 'frame',
+            ...rect,
+            angle: 0,
+            strokeColor: 'transparent',
+            backgroundColor: 'transparent',
+            fillStyle: 'solid',
+            strokeWidth: 1,
+            strokeStyle: 'solid',
+            roughness: 0,
+            opacity: 100,
+            groupIds: [],
+            frameId: null,
+            index: null,
+            roundness: null,
+            seed: 1,
+            version: 1,
+            versionNonce: 1,
+            isDeleted: false,
+            boundElements: null,
+            updated: 1,
+            link: null,
+            locked: false,
+            name: null,
+          });
+        const blob = await exportToBlob({
+          elements,
+          appState: {
+            ...data.appState,
+            exportBackground: true,
+            exportWithDarkMode: false,
+          },
+          files: data.files,
+          mimeType: 'image/png',
+          exportPadding: rect ? 0 : 20,
+          exportingFrame: rect ? elements.at(-1) : undefined,
+          getDimensions: (width, height) => {
+            const scale = Math.min(2, 8192 / Math.max(width, height));
+            return {
+              width: Math.ceil(width * scale),
+              height: Math.ceil(height * scale),
+              scale,
+            };
+          },
+        });
+        pages.push(
+          await new Promise((resolve, reject) => {
+            const reader = new ownerWindow.FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          }),
+        );
+      }
+      await bridge.invoke('exportPDF', doc.title, pages);
+    } finally {
+      setBusy(false);
+    }
   };
   const ask = (title, value, submit, options) =>
     setForm({ title, value, submit, options });
@@ -267,7 +440,9 @@ function App() {
     await refresh();
   };
   return (
-    <div className="workspace">
+    <div
+      className={`workspace ${!sidebar ? 'sidebar-hidden' : ''} ${presenting ? 'presenting' : ''}`}
+    >
       <aside className="files">
         <div className="brand">
           <span className="logo">▧</span>
@@ -335,6 +510,18 @@ function App() {
           </div>
           <div className="actions">
             <button
+              disabled={!doc || busy}
+              onClick={() => run(() => exportPDF(false))}
+            >
+              导出 PDF
+            </button>
+            <button
+              disabled={!doc || !scenes.length || busy}
+              onClick={() => run(() => exportPDF(true))}
+            >
+              场景 PDF
+            </button>
+            <button
               disabled={!doc}
               onClick={() =>
                 run(() => {
@@ -386,6 +573,8 @@ function App() {
             <Excalidraw
               key={doc.id}
               langCode="zh-CN"
+              showDeprecatedFonts
+              viewModeEnabled={presenting}
               excalidrawAPI={(value) => {
                 api.current = value;
               }}
@@ -399,6 +588,7 @@ function App() {
                   changed({ ...active.current.data, libraryItems });
               }}
               onChange={(elements, appState, files) => {
+                if (presentation.current) return;
                 if (active.current?.id !== doc.id) return;
                 const data = JSON.parse(
                   serializeAsJSON(elements, appState, files, 'local'),
@@ -493,6 +683,28 @@ function App() {
         <p className="hint">为同一张白板保存不同区域，点击场景平滑导航。</p>
         <div className="scene-create">
           <button
+            disabled={!doc || !scenes.length}
+            onClick={() => run(beginPresentation)}
+          >
+            ▶ 演示
+          </button>
+          <button
+            disabled={!doc}
+            onClick={() =>
+              run(async () => {
+                const library = await bridge.invoke('importLibrary');
+                if (library)
+                  await api.current.updateLibrary({
+                    libraryItems: library.libraryItems || library.library,
+                    merge: true,
+                    openLibraryMenu: true,
+                  });
+              })
+            }
+          >
+            导入素材库
+          </button>
+          <button
             disabled={!doc}
             onClick={() => {
               stop();
@@ -516,43 +728,68 @@ function App() {
             value={duration}
             onChange={(e) => setDuration(Number(e.target.value))}
           >
+            <option value={500}>0.5 秒</option>
             <option value={1200}>1.2 秒</option>
             <option value={2200}>2.2 秒</option>
             <option value={3500}>3.5 秒</option>
             <option value={5000}>5 秒</option>
           </select>
         </label>
-        <div className="scene-list">
+        <div
+          className="scene-list"
+          onDragOver={(e) => {
+            e.preventDefault();
+            const bounds = e.currentTarget.getBoundingClientRect();
+            if (e.clientY > bounds.bottom - 35) e.currentTarget.scrollTop += 16;
+            if (e.clientY < bounds.top + 35) e.currentTarget.scrollTop -= 16;
+            if (e.target === e.currentTarget) setDropAt(scenes.length);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            const source = scenes.find((s) => s.id === drag.current);
+            if (source && dropAt !== null) {
+              const next = scenes.filter((s) => s.id !== source.id);
+              const index = dropAt - (scenes.indexOf(source) < dropAt ? 1 : 0);
+              next.splice(index, 0, source);
+              updateScenes(next);
+            }
+            drag.current = null;
+            setDropAt(null);
+          }}
+        >
           {scenes.map((s, i) => (
             <article
-              className="scene"
+              className={`scene ${dropAt === i ? 'drop-before' : ''} ${dropAt === i + 1 && i === scenes.length - 1 ? 'drop-after' : ''}`}
               key={s.id}
-              draggable
-              onDragStart={(e) => {
-                drag.current = s.id;
-                e.dataTransfer.setData('text/plain', s.id);
-              }}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
+              onDragOver={(e) => {
                 e.preventDefault();
-                const source = scenes.find((x) => x.id === drag.current);
-                if (!source || source.id === s.id) return;
-                const next = scenes.filter((x) => x.id !== source.id);
-                next.splice(
-                  next.findIndex((x) => x.id === s.id),
-                  0,
-                  source,
-                );
-                updateScenes(next);
-                drag.current = null;
+                const box = e.currentTarget.getBoundingClientRect();
+                setDropAt(i + (e.clientY > box.y + box.height / 2 ? 1 : 0));
               }}
             >
-              <button className="scene-target" onClick={() => navigate(s)}>
+              <button
+                className="drag-handle"
+                title="拖动排序"
+                draggable
+                onDragStart={(e) => {
+                  drag.current = s.id;
+                  e.dataTransfer.setData('text/plain', s.id);
+                  e.dataTransfer.effectAllowed = 'move';
+                }}
+                onDragEnd={() => {
+                  drag.current = null;
+                  setDropAt(null);
+                }}
+              >
+                ⠿
+              </button>
+              <button
+                className="scene-target"
+                title={s.title}
+                onClick={() => navigate(s)}
+              >
                 <span>{String(i + 1).padStart(2, '0')}</span>
                 <strong>{s.title}</strong>
-                <small>
-                  {Math.round(s.rect.width)} × {Math.round(s.rect.height)}
-                </small>
               </button>
               <div className="scene-tools">
                 <button
@@ -603,6 +840,120 @@ function App() {
           拖拽排序。滚动、点击画布或按 Esc 可打断导航。
         </small>
       </aside>
+      {!presenting && (
+        <button
+          className="scene-panel-toggle"
+          onClick={toggleSidebar}
+          title={sidebar ? '隐藏场景' : '显示场景'}
+          aria-label={sidebar ? '隐藏场景' : '显示场景'}
+          aria-pressed={sidebar}
+        >
+          <PanelIcon />
+        </button>
+      )}
+      {presenting && (
+        <>
+          <svg
+            className={`presentation-ink ${pen ? 'drawing' : ''}`}
+            onPointerDown={(e) => {
+              stop();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              const b = e.currentTarget.getBoundingClientRect();
+              ink.current = {
+                color: penColor,
+                width: penWidth,
+                  points: [[e.clientX - b.x, e.clientY - b.y], [e.clientX - b.x + 0.01, e.clientY - b.y]],
+              };
+              setStrokes((s) => [...s, ink.current]);
+            }}
+            onPointerMove={(e) => {
+              if (!ink.current) return;
+              const b = e.currentTarget.getBoundingClientRect();
+              ink.current = {
+                ...ink.current,
+                points: [
+                  ...ink.current.points,
+                  [e.clientX - b.x, e.clientY - b.y],
+                ],
+              };
+              setStrokes((s) => [...s.slice(0, -1), ink.current]);
+            }}
+            onPointerUp={() => {
+              ink.current = null;
+            }}
+            onPointerCancel={() => {
+              ink.current = null;
+            }}
+          >
+            {strokes.map((s, i) => (
+              <polyline
+                key={i}
+                points={s.points.map((p) => p.join(',')).join(' ')}
+                fill="none"
+                stroke={s.color}
+                strokeWidth={s.width}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            ))}
+          </svg>
+          <div className="presentation-controls">
+            <button
+              aria-label="上一场景"
+              disabled={scenes.findIndex((s) => s.id === currentScene) <= 0}
+              onClick={() => step(-1)}
+            >
+              ←
+            </button>
+            <span>
+              {scenes.findIndex((s) => s.id === currentScene) + 1} /{' '}
+              {scenes.length}
+            </span>
+            <button
+              aria-label="下一场景"
+              disabled={
+                scenes.findIndex((s) => s.id === currentScene) >=
+                scenes.length - 1
+              }
+              onClick={() => step(1)}
+            >
+              →
+            </button>
+            <button
+              aria-pressed={pen}
+              onClick={() => {
+                stop();
+                setPen(!pen);
+              }}
+            >
+              临时画笔
+            </button>
+            {pen && (
+              <>
+                <input
+                  aria-label="画笔颜色"
+                  type="color"
+                  value={penColor}
+                  onChange={(e) => setPenColor(e.target.value)}
+                />
+                <select
+                  aria-label="画笔粗细"
+                  value={penWidth}
+                  onChange={(e) => setPenWidth(Number(e.target.value))}
+                >
+                  {[1, 3, 6, 10].map((w) => (
+                    <option key={w} value={w}>
+                      {w} px
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+            <button onClick={() => setStrokes([])}>清除</button>
+            <button onClick={() => run(exitPresentation)}>退出演示</button>
+          </div>
+        </>
+      )}
       {trash && (
         <div className="modal-backdrop">
           <section className="modal">
