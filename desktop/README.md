@@ -1,5 +1,7 @@
 # Local Canvas desktop — P0 milestone
 
+[图文功能对比与需求状态](../README.md) · [下次迭代完整清单](NEXT-ITERATION.md)
+
 Local-first Windows/macOS app built with the official `@excalidraw/excalidraw` React component, Electron and SQLite. This directory lives in the Excalidraw fork; it is an independent npm project and does not change the upstream editor packages.
 
 ## Run

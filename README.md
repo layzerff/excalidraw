@@ -1,124 +1,86 @@
-<a href="https://excalidraw.com/" target="_blank" rel="noopener">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" alt="Excalidraw" srcset="https://excalidraw.nyc3.cdn.digitaloceanspaces.com/github/excalidraw_github_cover_2_dark.png" />
-    <img alt="Excalidraw" src="https://excalidraw.nyc3.cdn.digitaloceanspaces.com/github/excalidraw_github_cover_2.png" />
-  </picture>
-</a>
+# Local Canvas · 本地无限画布
 
-<h4 align="center">
-  <a href="https://excalidraw.com">Excalidraw Editor</a> |
-  <a href="https://plus.excalidraw.com/blog">Blog</a> |
-  <a href="https://docs.excalidraw.com">Documentation</a> |
-  <a href="https://plus.excalidraw.com">Excalidraw+</a>
-</h4>
+基于官方 MIT 授权的 **Excalidraw React 组件 + React + Electron + SQLite**，面向 Windows/macOS 的本地优先白板。此 fork 的重点是本地多文档管理、可靠保存和同一白板内的场景导航。
 
-<div align="center">
-  <h2>
-    An open source virtual hand-drawn style whiteboard. </br>
-    Collaborative and end-to-end encrypted. </br>
-  <br />
-  </h2>
-</div>
+**当前状态：P0 可运行开发版。** 已验证 macOS Apple Silicon；Windows 实机验证与发布签名待完成。以下“待开发”内容是用户需求记录，不代表当前应用已具备。
 
-<br />
-<p align="center">
-  <a href="https://github.com/excalidraw/excalidraw/blob/master/LICENSE">
-    <img alt="Excalidraw is released under the MIT license." src="https://img.shields.io/badge/license-MIT-blue.svg"  /></a>
-  <a href="https://www.npmjs.com/package/@excalidraw/excalidraw">
-    <img alt="npm downloads/month" src="https://img.shields.io/npm/dm/@excalidraw/excalidraw"  /></a>
-  <a href="https://docs.excalidraw.com/docs/introduction/contributing">
-    <img alt="PRs welcome!" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat"  /></a>
-  <a href="https://discord.gg/UexuTaE">
-    <img alt="Chat on Discord" src="https://img.shields.io/discord/723672430744174682?color=738ad6&label=Chat%20on%20Discord&logo=discord&logoColor=ffffff&widget=false"/></a>
-  <a href="https://deepwiki.com/excalidraw/excalidraw">
-    <img alt="Ask DeepWiki" src="https://deepwiki.com/badge.svg" /></a>
-  <a href="https://twitter.com/excalidraw">
-    <img alt="Follow Excalidraw on Twitter" src="https://img.shields.io/twitter/follow/excalidraw.svg?label=follow+@excalidraw&style=social&logo=twitter"/></a>
-</p>
+[开发源码与运行说明](https://github.com/layzerff/excalidraw/tree/codex/local-canvas-p0/desktop) · [完整需求与验收](https://github.com/layzerff/excalidraw/blob/codex/local-canvas-p0/desktop/NEXT-ITERATION.md) · [测试记录](https://github.com/layzerff/excalidraw/blob/codex/local-canvas-p0/desktop/VALIDATION.md) · [原版说明](README.upstream.md)
 
-<div align="center">
-  <figure>
-    <a href="https://excalidraw.com" target="_blank" rel="noopener">
-      <img src="https://excalidraw.nyc3.cdn.digitaloceanspaces.com/github%2Fproduct_showcase.png" alt="Product showcase" />
-    </a>
-    <figcaption>
-      <p align="center">
-        Create beautiful hand-drawn like diagrams, wireframes, or whatever you like.
-      </p>
-    </figcaption>
-  </figure>
-</div>
+## 当前版本实机界面
 
-## Features
+![Local Canvas P0 实机截图：左侧本地文件树、中间原生画布、右侧场景导航](docs/local-canvas/desktop-p0.png)
 
-The Excalidraw editor (npm package) supports:
+*2026-10-17，macOS 打包应用的真实回归测试截图。恢复文件夹与重复标题来自导入/备份恢复测试；截图仍显示场景尺寸和旧间距，紧凑列表等改动尚未实现。*
 
-- 💯&nbsp;Free & open-source.
-- 🎨&nbsp;Infinite, canvas-based whiteboard.
-- ✍️&nbsp;Hand-drawn like style.
-- 🌓&nbsp;Dark mode.
-- 🏗️&nbsp;Customizable.
-- 📷&nbsp;Image support.
-- 😀&nbsp;Shape libraries support.
-- 🌐&nbsp;Localization (i18n) support.
-- 🖼️&nbsp;Export to PNG, SVG & clipboard.
-- 💾&nbsp;Open format - export drawings as an `.excalidraw` json file.
-- ⚒️&nbsp;Wide range of tools - rectangle, circle, diamond, arrow, line, free-draw, eraser...
-- ➡️&nbsp;Arrow-binding & labeled arrows.
-- 🔙&nbsp;Undo / Redo.
-- 🔍&nbsp;Zoom and panning support.
+## 与原版 Excalidraw 的区别
 
-## Excalidraw.com
+比较对象是本仓库保留的上游开源项目及本桌面开发版，不是 Excalidraw+ 商业套餐。绘图能力来自官方组件；下表仅说明此 fork 的集成与扩展。
 
-The app hosted at [excalidraw.com](https://excalidraw.com) is a minimal showcase of what you can build with Excalidraw. Its [source code](https://github.com/excalidraw/excalidraw/tree/master/excalidraw-app) is part of this repository as well, and the app features:
+| 方面 | 上游开源项目 / 组件 | Local Canvas 当前开发版 |
+| --- | --- | --- |
+| 使用形态 | 官方编辑器组件及 Web 应用代码 | 新增 Electron 本地桌面外壳，入口为 `desktop/` |
+| 原生绘图 | 图形、文字、箭头、自由画笔、Frame、撤销重做等 | 保留官方组件；已实测矩形与撤销重做，其他原生功能继续回归 |
+| 文档与文件夹 | 组件不提供本产品所需的桌面文档工作区 | 新增嵌套文件树，创建、重命名、移动、切换与回收站；无文档数量配额 |
+| 本地保存 | Web 应用有浏览器本地保存；组件由宿主负责持久化 | 新增 SQLite WAL、版本冲突保护、切换/关闭前保存及重启恢复 |
+| 备份 | 原生 .excalidraw 等开放格式 | 增加完整文档与工作区备份，包含图片、场景与文档素材库；恢复导入新文件夹 |
+| 场景区域导航 | Frame 与官方视口 API 是可用底层能力 | 新增独立场景列表、区域框选、保存视图、标题、基础排序、区域重框与可打断移动缩放 |
+| 素材库 | 官方组件支持素材库 | 保留素材库及文档内持久化；第三方本地库待专项验收，在线浏览/安装未开放 |
+| PDF / 演示 | 此处不对上游全部版本作功能断言 | 本桌面版尚未实现 PDF 导出及全屏场景演示，已列入下方计划 |
+| 网络服务 | 官方 Web 应用具有网络协作等能力 | 当前桌面版禁止远程请求和弹窗，离线使用；未接入 Excalidraw+ 服务 |
 
-- 📡&nbsp;PWA support (works offline).
-- 🤼&nbsp;Real-time collaboration.
-- 🔒&nbsp;End-to-end encryption.
-- 💾&nbsp;Local-first support (autosaves to the browser).
-- 🔗&nbsp;Shareable links (export to a readonly link you can share with others).
+## 下一批修改清单
 
-We'll be adding these features as drop-in plugins for the npm package in the future.
+所有用户反馈均在此累计；实施后会更新状态、实际截图和验证结果。
 
-## Quick start
+| 编号 | 修改要求 | 状态 |
+| --- | --- | --- |
+| N01 | 移动时长新增 **0.5 秒** | 已记录，待开发 |
+| N02 | 去掉场景条目的宽 × 高描述 | 已记录，待开发 |
+| N03 | 缩小场景行距、卡片和操作区，采用紧凑列表 | 已记录，待开发 |
+| N04 | 场景自由拖动排序，完善插入提示、首末位落点与长列表滚动 | 已有基础拖拽；完善交互与真实拖拽测试待完成 |
+| N05 | 参考 Revezone 改善中英文字体，评估界面与画布自定义字体 | 已评估，待开发；具体字体尚未指定 |
+| N06 | 导出可选 PDF；建议完整白板单页 / 按场景顺序分页 | 已记录，待开发；分页方式为建议方案 |
+| N07 | 右侧场景列表可隐藏和重新显示，画布回收空间 | 已记录，待开发 |
+| N08 | 第三方素材库兼容确认，完善本地导入与持久化验证 | 组件有本地库基础，专项验收待完成；在线安装未开放 |
+| N09 | 场景列表增加“演示”按钮，进入全屏演示 | 已记录，待开发 |
+| N10 | 全屏底部显示上一场景、下一场景及临时画笔按钮 | 已记录，待开发 |
+| N11 | 临时画笔可改颜色与笔画粗细，参考内置画笔风格和菜单 | 已记录，待开发 |
 
-**Note:** following instructions are for installing the Excalidraw [npm package](https://www.npmjs.com/package/@excalidraw/excalidraw) when integrating Excalidraw into your own app. To run the repository locally for development, please refer to our [Development Guide](https://docs.excalidraw.com/docs/introduction/development).
+### 全屏演示方案示意 · 尚未实现
 
-Use `npm` or `yarn` to install the package.
+![计划中的全屏演示：底部左右翻页和临时画笔工具栏、颜色及粗细菜单；此图为需求示意](docs/local-canvas/presentation-planned.svg)
 
-```bash
-npm install react react-dom @excalidraw/excalidraw
-# or
-yarn add react react-dom @excalidraw/excalidraw
+“临时画笔”暂建议为：允许连续绘制多笔，翻页或退出演示时清除，不写入原文档、备份或 PDF。**这是建议默认规则，用户尚未明确指定其生命周期。** 图中“页码、清除、退出”入口也是建议设计，不是现有功能截图。
+
+## 运行开发版
+
+应用源码目前在 `codex/local-canvas-p0` 分支；默认 `master` 分支先同步说明与图片，应用代码尚未合并。
+
+```sh
+git clone --branch codex/local-canvas-p0 https://github.com/layzerff/excalidraw.git
+cd excalidraw/desktop
+npm ci --workspaces=false
+# 若 npm 没有下载 Electron 运行时：
+node node_modules/electron/install.js
+npm run build
+npm start
 ```
 
-Check out our [documentation](https://docs.excalidraw.com/docs/@excalidraw/excalidraw/installation) for more details!
+存储测试需要 Node 24.13+ 或 Node 26。Electron 自带运行时。当前包未签名或公证，不是正式发布安装包。
 
-## Contributing
+已通过 9 项存储/导航单元测试，以及源码运行和 macOS 打包应用的真实 Electron 回归，覆盖绘图、撤销重做、场景、文档切换、导入导出、备份恢复和关闭前保存。Windows、IME/手写笔及全部原生功能的完整回归仍待完成。细节见[验证记录](https://github.com/layzerff/excalidraw/blob/codex/local-canvas-p0/desktop/VALIDATION.md)。
 
-- Missing something or found a bug? [Report here](https://github.com/excalidraw/excalidraw/issues).
-- Want to contribute? Check out our [contribution guide](https://docs.excalidraw.com/docs/introduction/contributing) or let us know on [Discord](https://discord.gg/UexuTaE).
-- Want to help with translations? See the [translation guide](https://docs.excalidraw.com/docs/introduction/contributing#translating).
+## 更新记录与同步约定
 
-## Integrations
+| 日期 | 更新 |
+| --- | --- |
+| 2026-10-17 | 提交首个桌面开发里程碑 `668e9f8` |
+| 2026-10-17 | 收录场景列表、字体、PDF、侧栏与素材库需求 N01–N08 |
+| 2026-10-17 | 补充全屏演示及临时画笔需求 N09–N11 |
+| 2026-10-17 | 更新 fork 首页 README：实机截图、原版差异表、完整需求状态和演示示意 |
 
-- [VScode extension](https://marketplace.visualstudio.com/items?itemName=pomdtr.excalidraw-editor)
-- [npm package](https://www.npmjs.com/package/@excalidraw/excalidraw)
+后续每次在本项目中处理用户新增需求或功能修改时，同步 README、详细需求文档与相关图片。新增需求标为待开发；实现后记录实际行为和测试证据，再更新状态。默认分支同步文档，开发分支保留对应源码。同步发生在处理项目请求时，不是后台定时任务。
 
-## Who's integrating Excalidraw
+## 上游与许可证
 
-[Google Cloud](https://googlecloudcheatsheet.withgoogle.com/architecture) • [Meta](https://meta.com/) • [CodeSandbox](https://codesandbox.io/) • [Obsidian Excalidraw](https://github.com/zsviczian/obsidian-excalidraw-plugin) • [Replit](https://replit.com/) • [Slite](https://slite.com/) • [Notion](https://notion.so/) • [HackerRank](https://www.hackerrank.com/) • and many others
-
-## Sponsors & support
-
-If you like the project, you can become a sponsor at [Open Collective](https://opencollective.com/excalidraw) or use [Excalidraw+](https://plus.excalidraw.com/).
-
-## Thank you for supporting Excalidraw
-
-[<img src="https://opencollective.com/excalidraw/tiers/sponsors/0/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/0/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/1/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/1/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/2/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/2/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/3/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/3/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/4/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/4/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/5/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/5/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/6/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/6/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/7/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/7/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/8/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/8/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/9/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/9/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/10/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/10/website)
-
-<a href="https://opencollective.com/excalidraw#category-CONTRIBUTE" target="_blank"><img src="https://opencollective.com/excalidraw/tiers/backers.svg?avatarHeight=32"/></a>
-
-Last but not least, we're thankful to these companies for offering their services for free:
-
-[![Vercel](./.github/assets/vercel.svg)](https://vercel.com) [![Sentry](./.github/assets/sentry.svg)](https://sentry.io) [![Crowdin](./.github/assets/crowdin.svg)](https://crowdin.com)
+感谢 [Excalidraw](https://github.com/excalidraw/excalidraw)。保留上游 [MIT LICENSE](LICENSE)，第三方依赖与字体声明随桌面构建生成。原版介绍保存在 [README.upstream.md](README.upstream.md)。本项目当前没有接入 Excalidraw+ 付费服务。
