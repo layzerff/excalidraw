@@ -42,6 +42,8 @@ Default macOS folder: `~/Library/Application Support/Local Canvas/`; default Win
 
 Presentation always begins with the first ordered scene. The Layers button opens the same draggable scene list and context menu during fullscreen. Editing navigation is fixed at 500 ms; presentation controls offer 500/1000/1500/2000 ms for arrows and automatic playback. Automatic playback waits three seconds after each transition and stops at the last scene; opening Layers or the pen pauses it.
 
+The workspace buttons use two fixed rows: create board/folder, then Save/Save As. Autoplay dwell now offers 1/2/3/5/10/15/30 seconds (default three), independently of transition duration. Changing dwell during playback restarts the current page's countdown.
+
 Database: Electron `app.getPath('userData')/workspace.sqlite`; daily startup snapshots: `userData/backups/`. Development and packaged builds both use the `Local Canvas` profile under the operating system's application-data directory. Set `LOCAL_CANVAS_DATA` to an absolute dedicated directory for tests or an explicit profile.
 
 Keep external backups on another disk. Daily snapshots on the same disk do not protect against disk failure. Importing a backup never overwrites the current workspace. Individual document payload limit is 100 MB, backup import file limit 500 MB; these are safety limits on a single operation, not document-count quotas.
