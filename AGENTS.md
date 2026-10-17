@@ -5,7 +5,7 @@
 
 ## Local Canvas documentation sync
 
-- User request: every Local Canvas requirement change and implemented change must be reflected in the GitHub README with text and relevant visuals explaining differences from upstream Excalidraw.
+- User request: keep README focused on differences from upstream Excalidraw and real screenshots. Put detailed requirements, bug explanations and history in desktop/NEXT-ITERATION.md, desktop/CHANGELOG.md and desktop/VALIDATION.md, linked from README.
 - Maintain the root `README.md` as the fork overview; retain upstream introduction in `README.upstream.md`. Keep detailed requirements and acceptance criteria in `desktop/NEXT-ITERATION.md` and desktop run instructions in `desktop/README.md`.
 - Distinguish shipped/validated, partially supported/unverified, planned, and proposed defaults. Do not present roadmap mockups as completed functionality or official upstream screenshots as fork screenshots.
 - Store real UI screenshots and clearly marked planned-feature diagrams under `docs/local-canvas/`, with alt text and portable repository links. Refresh visuals when the visible feature changes materially; text-only changes can reuse a still-accurate visual.
