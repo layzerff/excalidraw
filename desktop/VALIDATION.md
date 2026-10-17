@@ -38,3 +38,13 @@ Final macOS packaged regression passed after the PDF scale correction, single to
 ## macOS archive integrity correction
 
 The previous archive passed ZIP CRC checks but the application retained an incomplete Electron signature (`code has no resources but signature indicates they must be present`). The `afterPack` hook now ad-hoc signs the complete bundle and requires deep/strict verification before archives are created. The new ZIP was extracted into a fresh temporary directory; its application passes `codesign --verify --deep --strict` and the full real Electron regression. Ad-hoc integrity signing is not Developer ID certification or notarization, and does not establish Gatekeeper trust for downloaded apps.
+
+## Context menus, native ink, export scope and save behavior
+
+The final signed macOS bundle passed the expanded real Electron regression. Verified: scene context-menu rename/move, inline Enter commit and Escape cancellation, pointer-captured bidirectional ordering, removal of scene library import/count/action buttons, and Save located after the two create buttons in the workspace row.
+
+Presentation uses the official native freedraw engine and native styling panel in an independent editor. Actual strokes, native undo/redo, color selection, page-change cleanup and exit were exercised; original document elements remain unchanged. No temporary editor data is connected to save/import/export/backup. Local library import regression now uses the original editor's file-drop path rather than the removed scene button.
+
+The unified export menu was tested with full document, Excalidraw, whole-board PDF, scene PDF and a manually selected region. Region PNG dimensions are checked against the selected bounds (540 × 160 px for a 270 × 80 region at 2×); region SVG and PDF files are generated. PNG and rendered PDF were visually checked for complete Chinese/English lettering and correct cropping. Editable formats intentionally preserve the entire document.
+
+Database revisions remain unchanged after interrupted scene animation, completed animation and wheel panning. Cmd/Ctrl+S and the workspace Save button commit the current view. A subsequent pan followed by a real shape color edit autosaves the changed color while retaining the previously manually saved viewport. Existing switching, restart, backup/restore and close-time content flush checks still pass. All 9 storage/navigation unit tests passed. Developer ID notarization and Windows runtime testing remain outstanding.
