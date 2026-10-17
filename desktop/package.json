@@ -37,6 +37,7 @@
     "sass": "1.105.2"
   },
   "build": {
+    "afterPack": "scripts/sign-mac.cjs",
     "npmRebuild": false,
     "appId": "com.localcanvas.desktop",
     "productName": "Local Canvas",
@@ -50,6 +51,7 @@
       "output": "release"
     },
     "mac": {
+      "identity": null,
       "target": [
         "dmg",
         "zip"

@@ -52,6 +52,8 @@ The Electron test uses an isolated temporary profile, real editor pointer/keyboa
 
 Windows installation and signing must be tested on Windows. macOS distribution requires an Apple signing/notarization identity for a normal public release. Current builds are development artifacts. The entire upstream monorepo test suite is independent and is not run by `desktop` scripts.
 
+macOS development builds now receive an ad-hoc integrity signature before archiving and must pass deep/strict signature verification. This does not replace Apple Developer ID signing or notarization. Extract the ZIP, move the app to Applications and open it; macOS may require approval in System Settings → Privacy & Security. Keep the existing Local Canvas data folder when replacing the application.
+
 ## Boundaries and remaining validation
 
 - Renderer has no Node integration; preload exposes only allowlisted operations. IPC accepts only the current main frame. Remote HTTP/WebSocket requests, remote embedded frames and popup windows are blocked. Cloud collaboration, online library browsing, remote embeds and other network-dependent editor features are unavailable in this offline milestone.
