@@ -1,0 +1,202 @@
+import { _electron as electron, expect } from '@playwright/test';
+import { mkdtempSync, mkdirSync, rmSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+const profile = mkdtempSync(join(tmpdir(), 'local-canvas-e2e-'));
+mkdirSync('test-results', { recursive: true });
+let app;
+const errors = [];
+async function launch() {
+  app = await electron.launch({
+    executablePath: process.env.LOCAL_CANVAS_EXECUTABLE || undefined,
+    args: process.env.LOCAL_CANVAS_EXECUTABLE ? [] : [resolve('.')],
+    env: { ...process.env, LOCAL_CANVAS_DATA: profile },
+    timeout: 60000,
+  });
+  const page = await app.firstWindow();
+  page.on('pageerror', (e) => errors.push(e.message));
+  await expect(page.locator('.excalidraw')).toBeVisible({ timeout: 30000 });
+  return page;
+}
+async function data(page) {
+  return page.evaluate(async () => {
+    const b =
+      document.getElementById('root').ownerDocument.defaultView.workspace;
+    const id = await b.invoke('getSetting', 'activeDocument');
+    return (await b.invoke('read', id)).data;
+  });
+}
+try {
+  let page = await launch();
+  console.log(
+    'LAUNCHED',
+    await app.evaluate(() => ({
+      electron: process.versions.electron,
+      sqlite: process.versions.sqlite,
+    })),
+  );
+  await page.getByRole('button', { name: '保存当前视图', exact: true }).click();
+  await expect(page.locator('.scene')).toHaveCount(1);
+  await page.getByRole('button', { name: '＋ 框选区域', exact: true }).click();
+  const box = await page.locator('.selection-layer').boundingBox();
+  await page.mouse.move(box.x + 100, box.y + 120);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 450, box.y + 350, { steps: 12 });
+  await page.mouse.up();
+  await expect(page.locator('.scene')).toHaveCount(2);
+  await page
+    .locator('.scene')
+    .nth(1)
+    .getByRole('button', { name: '改名', exact: true })
+    .click();
+  await page.locator('.modal input').fill('局部细节');
+  await page.getByRole('button', { name: '确定', exact: true }).click();
+  await page.locator('.scene').nth(1).getByTitle('上移').click();
+  await expect(page.locator('.scene').first()).toContainText('局部细节');
+  // Exercise the upstream rectangle tool and native undo/redo using real pointer input.
+  await page.locator('.canvas').click({ position: { x: 80, y: 150 } });
+  await page
+    .locator('label')
+    .filter({ has: page.locator('[data-testid="toolbar-rectangle"]') })
+    .click();
+  const canvas = await page.locator('.canvas').boundingBox();
+  await page.mouse.move(canvas.x + 450, canvas.y + 250);
+  await page.mouse.down();
+  await page.mouse.move(canvas.x + 650, canvas.y + 400, { steps: 12 });
+  await page.mouse.up();
+  await expect
+    .poll(
+      async () =>
+        (await data(page)).elements.filter((e) => !e.isDeleted).length,
+    )
+    .toBe(1);
+  await page.keyboard.press(
+    process.platform === 'darwin' ? 'Meta+z' : 'Control+z',
+  );
+  await expect
+    .poll(
+      async () =>
+        (await data(page)).elements.filter((e) => !e.isDeleted).length,
+    )
+    .toBe(0);
+  await page.keyboard.press(
+    process.platform === 'darwin' ? 'Meta+Shift+z' : 'Control+Shift+z',
+  );
+  await expect
+    .poll(
+      async () =>
+        (await data(page)).elements.filter((e) => !e.isDeleted).length,
+    )
+    .toBe(1);
+  await page.locator('.scene-target').first().click();
+  await expect
+    .poll(async () => (await data(page)).appState.zoom?.value)
+    .not.toBe(1);
+  await page.keyboard.press('Escape');
+  // Confirm cancellation stops updates, rather than merely accepting the Escape key.
+  await expect(page.locator('.save-state')).toHaveText('已保存到本机');
+  const stopped = (await data(page)).appState;
+  await page.waitForTimeout(600);
+  expect((await data(page)).appState).toEqual(stopped);
+  await page.getByRole('button', { name: '＋ 白板', exact: true }).click();
+  await page.locator('.modal input').fill('第二张白板');
+  await page.getByRole('button', { name: '确定', exact: true }).click();
+  await expect(page.locator('header strong')).toHaveText('第二张白板');
+  await page
+    .getByRole('button', { name: '▧ 我的第一张白板', exact: true })
+    .click();
+  await expect(page.locator('.scene')).toHaveCount(2);
+  const exported = join(profile, 'document.canvas.json'),
+    native = join(profile, 'document.excalidraw'),
+    backup = join(profile, 'backup.json');
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath });
+  }, exported);
+  await page.getByRole('button', { name: '导出完整文档', exact: true }).click();
+  await expect
+    .poll(() => {
+      try {
+        return JSON.parse(readFileSync(exported, 'utf8')).data.scenes.length;
+      } catch {
+        return 0;
+      }
+    })
+    .toBe(2);
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath });
+  }, native);
+  await page
+    .getByRole('button', { name: '导出 .excalidraw', exact: true })
+    .click();
+  await expect
+    .poll(() => {
+      try {
+        return JSON.parse(readFileSync(native, 'utf8')).type;
+      } catch {
+        return '';
+      }
+    })
+    .toBe('excalidraw');
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath });
+  }, backup);
+  await page.getByRole('button', { name: '备份工作区', exact: true }).click();
+  await expect
+    .poll(() => {
+      try {
+        return JSON.parse(readFileSync(backup, 'utf8')).format;
+      } catch {
+        return '';
+      }
+    })
+    .toBe('local-canvas-workspace');
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [filePath],
+    });
+  }, backup);
+  await page.getByRole('button', { name: '恢复备份', exact: true }).click();
+  await expect(
+    page.locator('.node-title').filter({ hasText: '恢复' }),
+  ).toHaveCount(1);
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [filePath],
+    });
+  }, exported);
+  await page.getByRole('button', { name: '导入文档', exact: true }).click();
+  await expect(
+    page.locator('.node-title').filter({ hasText: '我的第一张白板' }),
+  ).toHaveCount(3);
+  await expect(page.locator('.scene')).toHaveCount(2);
+  await page.screenshot({ path: 'test-results/desktop.png' });
+  // Close immediately with a newly queued scene: beforeunload must flush it.
+  await page.getByRole('button', { name: '保存当前视图', exact: true }).click();
+  await expect(page.locator('.scene')).toHaveCount(3);
+  await app.close();
+  app = null;
+  page = await launch();
+  await expect(page.locator('.scene')).toHaveCount(3);
+  await expect(page.locator('.scene').first()).toContainText('局部细节');
+  expect((await data(page)).elements.filter((e) => !e.isDeleted)).toHaveLength(
+    1,
+  );
+  expect(errors).toEqual([]);
+  console.log(
+    'PASS: real Electron drawing, undo/redo, region selection, title, order, interrupted animation, document switching, file export/import, backup/restore, close-time flush, restart persistence',
+  );
+} catch (e) {
+  if (app) {
+    const p = await app.firstWindow();
+    await p.screenshot({ path: 'test-results/failure.png' });
+    console.log('ERRORS', errors);
+    console.log('BODY', (await p.locator('body').innerText()).slice(-5000));
+    console.log('DATA', JSON.stringify(await data(p)).slice(0, 2000));
+  }
+  throw e;
+} finally {
+  if (app) await app.close();
+  rmSync(profile, { recursive: true, force: true });
+}
