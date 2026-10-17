@@ -50,6 +50,15 @@ Keep external backups on another disk. Daily snapshots on the same disk do not p
 
 ## Checks and packaging
 
+Windows x64 cross-build (NSIS installer plus standalone portable EXE):
+
+```sh
+npm run build
+npx electron-builder --win --x64
+```
+
+The 2026-10-18 cross-build succeeded on macOS. Both NSIS embedded archives pass 7-Zip integrity tests; the application executable is x86-64 PE. These unsigned development packages still need Windows runtime validation. Portable means no installation is needed, not that data is stored next to the EXE: the default workspace remains `%APPDATA%/Local Canvas/` unless changed in Save Location.
+
 ```sh
 npm test
 npm run build

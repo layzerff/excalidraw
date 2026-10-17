@@ -19,7 +19,7 @@ Validated on macOS Apple Silicon with Node 26.8.1, Electron 44.9.0 (Node 24.22.0
 | Workspace backup / non-overwriting restore | Passed |
 | Close with pending save and recover on restart | Passed |
 | Production dependency audit | 4 low; 0 moderate/high/critical |
-| Windows build and runtime | Not run on this macOS host |
+| Windows build and runtime | x64 NSIS/portable cross-build and archive checks passed; runtime not run |
 | Full upstream editor test suite | Not run; editor source unchanged |
 | Public release signing and notarization | Not configured |
 
@@ -58,3 +58,9 @@ Save As produces a full document containing scenes. The actual storage-location 
 Final result: the signed macOS packaged application passed the complete expanded desktop regression, including actual fullscreen-layer dragging, first-page entry, auto advance/stop, repeated-document-click recovery, native undo/redo, Save As and storage migration across restart. All 9 storage/navigation unit tests also passed. Updated real screenshots are stored under docs/local-canvas/.
 
 Save/dwell refinement adds actual button bounding-box assertions: Save lies below the create row and aligns vertically with Save As. The autoplay test confirms a default three-second dwell, selects one second, and observes automatic advancement and stopping at the last page, separately from the selected 500 ms movement duration.
+
+## Windows x64 cross-build — 2026-10-18
+
+Built with `npm run build` followed by `npx electron-builder --win --x64` on macOS Apple Silicon. Electron 44.9.0 Windows x64 runtime was bundled successfully. Outputs: NSIS installer (126,703,552 bytes) and portable EXE (126,536,621 bytes). Both outer NSIS archives pass 7-Zip integrity tests. The unpacked application executable is PE32+ x86-64; app.asar contains 449 entries, including main/preload scripts, 238 WOFF2 fonts, Excalidraw MIT license and third-party notices. PE certificate tables are empty (no Authenticode signature). No Wine/Windows host was available, so actual installation/startup, input methods, fullscreen, PDF printing and storage migration on Windows remain unverified.
+
+The installer's embedded `app-64.7z` was extracted and its integrity test also passed (73 files, 408,086,267 uncompressed bytes). Copies placed in task outputs have matching SHA-256 values: installer `26648d197c7b01d16c267ac3691762c71d65ebd2cb9bdba3cea01da6eb7a010b`; portable `de3e42a3504c3d9de00d819f08402e469ce6656a2d08a1068762020db277df5d`.
