@@ -31,6 +31,10 @@ npm start
 - Scene updates: 0.5-second option, compact rows, insertion markers, edge scrolling and a persistent split-panel toggle. Fullscreen presentation provides arrows, temporary ink with color/width, and clear/exit controls. Ink clears on scene changes and exit without modifying elements.
 - PDF: entire board or one cropped page per scene, exported as high-resolution PNGs in landscape A4 pages (8192-pixel longest edge cap, up to 200 pages). Text is rasterized, not searchable. JSON remains the editable backup format.
 - Fonts/library: bundled Excalifont, classic Virgil and Chinese Xiaolai fallback; font selection uses the original canvas font picker. Local `.excalidrawlib` import merges through the official API. Arbitrary custom font upload remains pending.
+- Scene actions now live in a context menu; renaming edits the title inline, with Enter/blur to commit and Escape to cancel. The scene sidebar no longer contains library import or a total count.
+- Temporary presentation ink uses a second independent official Excalidraw instance, including the native freedraw renderer and style controls. Its elements/history are never passed to document persistence and are cleared on page changes or destroyed on exit.
+- A single top-right export icon opens scope and format options. Manually selected regions support PNG, SVG and PDF. Editable JSON and `.excalidraw` exports always retain the entire document, as stated in the menu.
+- Autosave now reacts to content/style and document metadata changes, not viewport movement. Pan, zoom, scene animation and animation completion preserve the last manually saved viewport without writing new document revisions. The Save button and Cmd/Ctrl+S commit both current content and viewport; close/switch only flush pending content. Restart restores the last manually saved view.
 
 ## Data and recovery
 

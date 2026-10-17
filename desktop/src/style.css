@@ -489,3 +489,96 @@ select {
 .sidebar-hidden header {
   padding-right: 60px;
 }
+.scene-create > button:first-child {
+  grid-column: 1 / -1;
+}
+.scene-title-input {
+  width: calc(100% - 25px);
+  min-width: 0;
+  padding: 5px;
+  border: 1px solid #578579;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.scene-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+}
+.scene-context-menu {
+  position: absolute;
+  width: 160px;
+  padding: 5px;
+  background: white;
+  border: 1px solid #dedfd9;
+  border-radius: 8px;
+  box-shadow: 0 5px 20px #0002;
+  display: grid;
+}
+.scene-context-menu button {
+  text-align: left;
+  border: 0;
+}
+.presentation-ink .excalidraw {
+  background: transparent;
+}
+.presenting .presentation-ink.drawing .App-menu {
+  display: flex !important;
+}
+.presentation-ink .App-menu_top > :not(.App-menu_top__left),
+.presentation-ink .App-menu_top__left > :not(.selected-shape-actions),
+.presentation-ink .layer-ui__wrapper__footer,
+.presentation-ink .help-icon,
+.presentation-ink .HintViewer {
+  display: none !important;
+}
+.export-toggle {
+  position: absolute;
+  top: 16px;
+  right: 56px;
+  z-index: 26;
+  display: flex;
+  padding: 6px;
+}
+.export-menu {
+  position: absolute;
+  top: 55px;
+  right: 14px;
+  z-index: 65;
+  display: grid;
+  gap: 6px;
+  width: 275px;
+  max-height: calc(100vh - 70px);
+  overflow: auto;
+  background: white;
+  border: 1px solid #dedfd9;
+  border-radius: 9px;
+  padding: 14px;
+  box-shadow: 0 7px 30px #0002;
+  font-size: 12px;
+}
+.export-menu > button {
+  text-align: left;
+}
+.export-menu small {
+  color: #6d776f;
+  line-height: 1.5;
+}
+.files > .actions {
+  gap: 4px;
+}
+.files > .actions button {
+  padding: 7px 8px;
+}
+.drag-handle {
+  touch-action: none;
+  user-select: none;
+}
+.drag-handle:active {
+  cursor: grabbing;
+}
+.presenting .excalidraw footer,
+.presenting .excalidraw .layer-ui__wrapper__footer-left,
+.presenting .excalidraw .layer-ui__wrapper__footer-right {
+  display: none !important;
+}

@@ -6,6 +6,7 @@ import {
   serializeAsJSON,
   viewportCoordsToSceneCoords,
   exportToBlob,
+  exportToSvg,
 } from '@excalidraw/excalidraw';
 import '@excalidraw/excalidraw/index.css';
 import './style.css';
@@ -19,6 +20,55 @@ import {
 const root = document.getElementById('root');
 const ownerWindow = root.ownerDocument.defaultView;
 const bridge = ownerWindow.workspace;
+function exportOptions(data, rect) {
+  const frame = rect
+    ? {
+        id: '__export_region__',
+        type: 'frame',
+        ...rect,
+        angle: 0,
+        strokeColor: 'transparent',
+        backgroundColor: 'transparent',
+        fillStyle: 'solid',
+        strokeWidth: 1,
+        strokeStyle: 'solid',
+        roughness: 0,
+        opacity: 100,
+        groupIds: [],
+        frameId: null,
+        index: null,
+        roundness: null,
+        seed: 1,
+        version: 1,
+        versionNonce: 1,
+        isDeleted: false,
+        boundElements: null,
+        updated: 1,
+        link: null,
+        locked: false,
+        name: null,
+      }
+    : null;
+  return {
+    elements: frame ? [...data.elements, frame] : data.elements,
+    appState: {
+      ...data.appState,
+      exportBackground: true,
+      exportWithDarkMode: false,
+    },
+    files: data.files,
+    exportPadding: rect ? 0 : 20,
+    exportingFrame: frame,
+    getDimensions: (width, height) => {
+      const scale = Math.min(2, 8192 / Math.max(width, height));
+      return {
+        width: Math.ceil(width * scale),
+        height: Math.ceil(height * scale),
+        scale,
+      };
+    },
+  };
+}
 function PanelIcon() {
   return (
     <svg
@@ -56,17 +106,40 @@ function App() {
     [form, setForm] = useState(null);
   const [sidebar, setSidebar] = useState(true);
   const [presenting, setPresenting] = useState(false);
+  const [presentationReady, setPresentationReady] = useState(false);
   const [currentScene, setCurrentScene] = useState(null);
   const [pen, setPen] = useState(false);
-  const [penColor, setPenColor] = useState('#e03131');
-  const [penWidth, setPenWidth] = useState(3);
-  const [strokes, setStrokes] = useState([]);
+  const [inkCount, setInkCount] = useState(0);
+  const [editingScene, setEditingScene] = useState(null);
+  const [sceneMenu, setSceneMenu] = useState(null);
+  const [exportMenu, setExportMenu] = useState(false);
+  const [exportRegion, setExportRegion] = useState(null);
   const [dropAt, setDropAt] = useState(null);
+  const dropPosition = useRef(null);
+  const markDrop = (index) => {
+    dropPosition.current = index;
+    setDropAt(index);
+  };
   const presentation = useRef(false),
     savedView = useRef(null),
-    ink = useRef(null);
+    inkApi = useRef(null);
   const presentationTimer = useRef(null);
   const latest = useRef({});
+  const clearInk = () => {
+    inkApi.current?.updateScene({
+      elements: [],
+      appState: { selectedElementIds: {} },
+      captureUpdate: CaptureUpdateAction.NEVER,
+    });
+    inkApi.current?.history.clear();
+    setInkCount(0);
+  };
+  const renameScene = (id, value) => {
+    const title = value.trim();
+    if (title)
+      updateScenes(scenes.map((s) => (s.id === id ? { ...s, title } : s)));
+    setEditingScene(null);
+  };
   const api = useRef(null),
     active = useRef(null),
     dirty = useRef(false),
@@ -122,6 +195,33 @@ function App() {
       } catch {}
     }, 500);
   };
+  const manualSave = () => {
+    if (!api.current || !active.current || presentation.current) return;
+    stop();
+    const focused = root.ownerDocument.activeElement;
+    if (root.contains(focused)) focused.blur();
+    const state = api.current.getAppState();
+    const data = JSON.parse(
+      serializeAsJSON(
+        api.current.getSceneElements(),
+        state,
+        api.current.getFiles(),
+        'local',
+      ),
+    );
+    changed({
+      ...active.current.data,
+      elements: data.elements,
+      files: data.files || {},
+      appState: {
+        ...data.appState,
+        scrollX: state.scrollX,
+        scrollY: state.scrollY,
+        zoom: state.zoom,
+      },
+    });
+    flush();
+  };
   const switchDoc = async (id) => {
     if (busy) return;
     setBusy(true);
@@ -130,6 +230,8 @@ function App() {
       stop();
       setSelecting(null);
       setSelection(null);
+      setExportMenu(false);
+      setExportRegion(null);
       const next = await bridge.invoke('read', id);
       api.current = null;
       active.current = next;
@@ -176,9 +278,22 @@ function App() {
           e.preventDefault();
       }
       if (e.key === 'Escape') {
+        setExportMenu(false);
+        setSceneMenu(null);
         stop();
         setSelecting(null);
         setSelection(null);
+      }
+    };
+    const saveKey = (e) => {
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.key.toLowerCase() === 's' &&
+        !e.altKey
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        run(() => latest.current.manualSave());
       }
     };
     const periodic = ownerWindow.setInterval(() => {
@@ -188,10 +303,12 @@ function App() {
     }, 2000);
     ownerWindow.addEventListener('beforeunload', close);
     ownerWindow.addEventListener('keydown', key);
+    ownerWindow.addEventListener('keydown', saveKey, true);
     return () => {
       ownerWindow.clearInterval(periodic);
       ownerWindow.removeEventListener('beforeunload', close);
       ownerWindow.removeEventListener('keydown', key);
+      ownerWindow.removeEventListener('keydown', saveKey, true);
       stop();
     };
   }, []);
@@ -220,7 +337,7 @@ function App() {
     if (!api.current) return;
     stop();
     setCurrentScene(scene.id);
-    setStrokes([]);
+    clearInk();
     const state = api.current.getAppState();
     const from = {
         zoom: state.zoom.value,
@@ -240,6 +357,14 @@ function App() {
         },
         captureUpdate: CaptureUpdateAction.NEVER,
       });
+      inkApi.current?.updateScene({
+        appState: {
+          scrollX: v.scrollX,
+          scrollY: v.scrollY,
+          zoom: { value: v.zoom },
+        },
+        captureUpdate: CaptureUpdateAction.NEVER,
+      });
       frame.current = t < 1 ? ownerWindow.requestAnimationFrame(animate) : null;
     };
     frame.current = ownerWindow.requestAnimationFrame(animate);
@@ -249,8 +374,10 @@ function App() {
     stop();
     presentation.current = false;
     setPresenting(false);
+    setPresentationReady(false);
     setPen(false);
-    setStrokes([]);
+    clearInk();
+    inkApi.current = null;
     if (root.ownerDocument.fullscreenElement)
       await root.ownerDocument.exitFullscreen();
     ownerWindow.requestAnimationFrame(() =>
@@ -268,7 +395,7 @@ function App() {
     const next = scenes[index + delta];
     if (next) navigate(next);
   };
-  latest.current = { exitPresentation, step };
+  latest.current = { exitPresentation, step, manualSave };
   useEffect(() => {
     const changedFullscreen = () => {
       if (!root.ownerDocument.fullscreenElement && presentation.current)
@@ -291,12 +418,17 @@ function App() {
     };
     await root.requestFullscreen();
     presentation.current = true;
+    setPresentationReady(false);
     setPresenting(true);
-    presentationTimer.current = ownerWindow.setTimeout(
-      () => navigate(scenes.find((s) => s.id === currentScene) || scenes[0]),
-      150,
-    );
+    presentationTimer.current = ownerWindow.setTimeout(() => {
+      navigate(scenes.find((s) => s.id === currentScene) || scenes[0]);
+      setPresentationReady(true);
+    }, 150);
   };
+  useEffect(() => {
+    if (presenting && pen)
+      inkApi.current?.setActiveTool({ type: 'freedraw', locked: true });
+  }, [presenting, pen]);
   const toggleSidebar = () => {
     setSidebar(!sidebar);
     run(() => bridge.invoke('setSetting', 'sceneSidebar', !sidebar));
@@ -307,7 +439,7 @@ function App() {
     setBusy(true);
     try {
       const data = active.current.data;
-      const regions = byScenes ? scenes.map((s) => s.rect) : [null];
+      const regions = byScenes ? scenes.map((s) => s.rect) : [exportRegion];
       const pages = [];
       for (const rect of regions) {
         const elements = [...data.elements];
@@ -368,6 +500,28 @@ function App() {
         );
       }
       await bridge.invoke('exportPDF', doc.title, pages);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const exportGraphic = async (format) => {
+    flush();
+    stop();
+    setBusy(true);
+    try {
+      const options = exportOptions(active.current.data, exportRegion);
+      let value;
+      if (format === 'svg') value = (await exportToSvg(options)).outerHTML;
+      else {
+        const blob = await exportToBlob({ ...options, mimeType: 'image/png' });
+        value = await new Promise((resolve, reject) => {
+          const reader = new ownerWindow.FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      }
+      await bridge.invoke('exportGraphic', doc.title, format, value);
     } finally {
       setBusy(false);
     }
@@ -456,6 +610,14 @@ function App() {
         <div className="actions">
           <button onClick={() => create('document')}>＋ 白板</button>
           <button onClick={() => create('folder')}>＋ 文件夹</button>
+          <button
+            className="workspace-save"
+            title="保存内容与当前视图（Cmd/Ctrl+S）"
+            disabled={!doc || busy}
+            onClick={() => run(manualSave)}
+          >
+            保存
+          </button>
         </div>
         <button
           className={`root ${folder === null ? 'selected' : ''}`}
@@ -508,52 +670,6 @@ function App() {
             <strong>{doc?.title || '选择或创建一张白板'}</strong>
             <span className="save-state">{status}</span>
           </div>
-          <div className="actions">
-            <button
-              disabled={!doc || busy}
-              onClick={() => run(() => exportPDF(false))}
-            >
-              导出 PDF
-            </button>
-            <button
-              disabled={!doc || !scenes.length || busy}
-              onClick={() => run(() => exportPDF(true))}
-            >
-              场景 PDF
-            </button>
-            <button
-              disabled={!doc}
-              onClick={() =>
-                run(() => {
-                  flush();
-                  return bridge.invoke(
-                    'exportDocument',
-                    doc.id,
-                    active.current.data,
-                    false,
-                  );
-                })
-              }
-            >
-              导出完整文档
-            </button>
-            <button
-              disabled={!doc}
-              title="标准格式不含自定义场景"
-              onClick={() =>
-                run(() =>
-                  bridge.invoke(
-                    'exportDocument',
-                    doc.id,
-                    active.current.data,
-                    true,
-                  ),
-                )
-              }
-            >
-              导出 .excalidraw
-            </button>
-          </div>
         </header>
         {error && (
           <div className="error" role="alert">
@@ -595,9 +711,9 @@ function App() {
                 );
                 data.appState = {
                   ...data.appState,
-                  scrollX: appState.scrollX,
-                  scrollY: appState.scrollY,
-                  zoom: appState.zoom,
+                  scrollX: active.current.data.appState.scrollX ?? 0,
+                  scrollY: active.current.data.appState.scrollY ?? 0,
+                  zoom: active.current.data.appState.zoom ?? { value: 1 },
                 };
                 const next = {
                   ...active.current.data,
@@ -653,14 +769,24 @@ function App() {
                   b = viewportCoordsToSceneCoords(e, api.current.getAppState());
                 start.current = null;
                 const rect = normalizeRect(a, b);
-                if (rect.width > 1 && rect.height > 1) addScene(rect);
+                if (rect.width > 1 && rect.height > 1) {
+                  if (selecting === 'export') {
+                    setExportRegion(rect);
+                    setSelecting(null);
+                    setSelection(null);
+                    setExportMenu(true);
+                  } else addScene(rect);
+                }
               }}
               onPointerCancel={() => {
                 start.current = null;
                 setSelection(null);
               }}
             >
-              <div className="selection-tip">拖出场景区域 · Esc 取消</div>
+              <div className="selection-tip">
+                {selecting === 'export' ? '拖出导出区域' : '拖出场景区域'} · Esc
+                取消
+              </div>
               {selection && (
                 <div
                   className="selection-box"
@@ -677,9 +803,7 @@ function App() {
         </div>
       </main>
       <aside className="scenes">
-        <div className="section-title">
-          场景 <span>{scenes.length}</span>
-        </div>
+        <div className="section-title">场景</div>
         <p className="hint">为同一张白板保存不同区域，点击场景平滑导航。</p>
         <div className="scene-create">
           <button
@@ -687,22 +811,6 @@ function App() {
             onClick={() => run(beginPresentation)}
           >
             ▶ 演示
-          </button>
-          <button
-            disabled={!doc}
-            onClick={() =>
-              run(async () => {
-                const library = await bridge.invoke('importLibrary');
-                if (library)
-                  await api.current.updateLibrary({
-                    libraryItems: library.libraryItems || library.library,
-                    merge: true,
-                    openLibraryMenu: true,
-                  });
-              })
-            }
-          >
-            导入素材库
           </button>
           <button
             disabled={!doc}
@@ -742,161 +850,340 @@ function App() {
             const bounds = e.currentTarget.getBoundingClientRect();
             if (e.clientY > bounds.bottom - 35) e.currentTarget.scrollTop += 16;
             if (e.clientY < bounds.top + 35) e.currentTarget.scrollTop -= 16;
-            if (e.target === e.currentTarget) setDropAt(scenes.length);
+            if (e.target === e.currentTarget) markDrop(scenes.length);
           }}
           onDrop={(e) => {
             e.preventDefault();
             const source = scenes.find((s) => s.id === drag.current);
-            if (source && dropAt !== null) {
+            if (source && dropPosition.current !== null) {
               const next = scenes.filter((s) => s.id !== source.id);
-              const index = dropAt - (scenes.indexOf(source) < dropAt ? 1 : 0);
+              const index =
+                dropPosition.current -
+                (scenes.indexOf(source) < dropPosition.current ? 1 : 0);
               next.splice(index, 0, source);
               updateScenes(next);
             }
             drag.current = null;
-            setDropAt(null);
+            markDrop(null);
           }}
         >
           {scenes.map((s, i) => (
             <article
               className={`scene ${dropAt === i ? 'drop-before' : ''} ${dropAt === i + 1 && i === scenes.length - 1 ? 'drop-after' : ''}`}
               key={s.id}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setSceneMenu({
+                  id: s.id,
+                  x: Math.min(e.clientX, ownerWindow.innerWidth - 170),
+                  y: Math.min(e.clientY, ownerWindow.innerHeight - 200),
+                });
+              }}
               onDragOver={(e) => {
                 e.preventDefault();
                 const box = e.currentTarget.getBoundingClientRect();
-                setDropAt(i + (e.clientY > box.y + box.height / 2 ? 1 : 0));
+                markDrop(i + (e.clientY > box.y + box.height / 2 ? 1 : 0));
               }}
             >
               <button
                 className="drag-handle"
                 title="拖动排序"
-                draggable
-                onDragStart={(e) => {
+                onPointerDown={(e) => {
+                  if (e.button !== 0) return;
+                  e.preventDefault();
+                  e.currentTarget.setPointerCapture(e.pointerId);
                   drag.current = s.id;
-                  e.dataTransfer.setData('text/plain', s.id);
-                  e.dataTransfer.effectAllowed = 'move';
+                  markDrop(null);
                 }}
-                onDragEnd={() => {
+                onPointerMove={(e) => {
+                  if (drag.current !== s.id) return;
+                  const list = e.currentTarget.closest('.scene-list');
+                  const bounds = list.getBoundingClientRect();
+                  if (e.clientY < bounds.top + 35) list.scrollTop -= 16;
+                  if (e.clientY > bounds.bottom - 35) list.scrollTop += 16;
+                  const rows = Array.from(list.querySelectorAll('.scene'));
+                  const index = rows.findIndex((row) => {
+                    const box = row.getBoundingClientRect();
+                    return e.clientY < box.top + box.height / 2;
+                  });
+                  markDrop(index < 0 ? scenes.length : index);
+                }}
+                onPointerUp={() => {
+                  if (drag.current === s.id && dropPosition.current !== null) {
+                    const next = scenes.filter((scene) => scene.id !== s.id);
+                    const index =
+                      dropPosition.current - (i < dropPosition.current ? 1 : 0);
+                    next.splice(index, 0, s);
+                    if (index !== i) updateScenes(next);
+                  }
                   drag.current = null;
-                  setDropAt(null);
+                  markDrop(null);
+                }}
+                onPointerCancel={() => {
+                  drag.current = null;
+                  markDrop(null);
                 }}
               >
                 ⠿
               </button>
-              <button
-                className="scene-target"
-                title={s.title}
-                onClick={() => navigate(s)}
-              >
-                <span>{String(i + 1).padStart(2, '0')}</span>
-                <strong>{s.title}</strong>
-              </button>
-              <div className="scene-tools">
+              {editingScene === s.id ? (
+                <input
+                  className="scene-title-input"
+                  aria-label="场景标题"
+                  autoFocus
+                  defaultValue={s.title}
+                  maxLength={200}
+                  onFocus={(e) => e.target.select()}
+                  onBlur={(e) => renameScene(s.id, e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur();
+                    if (e.key === 'Escape') {
+                      e.currentTarget.value = s.title;
+                      e.currentTarget.blur();
+                    }
+                  }}
+                />
+              ) : (
                 <button
-                  onClick={() =>
-                    ask('场景标题', s.title, (title) =>
-                      updateScenes(
-                        scenes.map((x) =>
-                          x.id === s.id ? { ...x, title } : x,
-                        ),
-                      ),
-                    )
-                  }
-                >
-                  改名
-                </button>
-                <button
-                  onClick={() => {
+                  className="scene-target"
+                  title={s.title}
+                  onClick={() => navigate(s)}
+                  onDoubleClick={(e) => {
+                    e.preventDefault();
                     stop();
-                    setSelecting(s.id);
+                    setEditingScene(s.id);
                   }}
                 >
-                  重框
+                  <span>{String(i + 1).padStart(2, '0')}</span>
+                  <strong>{s.title}</strong>
                 </button>
-                <button
-                  title="上移"
-                  disabled={i === 0}
-                  onClick={() => {
-                    const next = [...scenes];
-                    [next[i - 1], next[i]] = [next[i], next[i - 1]];
-                    updateScenes(next);
-                  }}
-                >
-                  ↑
-                </button>
-                <button
-                  title="删除场景"
-                  onClick={() =>
-                    updateScenes(scenes.filter((x) => x.id !== s.id))
-                  }
-                >
-                  ×
-                </button>
-              </div>
+              )}
             </article>
           ))}
         </div>
-        <small className="hint">
-          拖拽排序。滚动、点击画布或按 Esc 可打断导航。
-        </small>
+        <small className="hint">拖拽排序 · 双击标题改名 · 右键更多操作。</small>
       </aside>
-      {!presenting && (
-        <button
-          className="scene-panel-toggle"
-          onClick={toggleSidebar}
-          title={sidebar ? '隐藏场景' : '显示场景'}
-          aria-label={sidebar ? '隐藏场景' : '显示场景'}
-          aria-pressed={sidebar}
+      {sceneMenu && (
+        <div
+          className="scene-menu-backdrop"
+          onPointerDown={() => setSceneMenu(null)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setSceneMenu(null);
+          }}
         >
-          <PanelIcon />
-        </button>
-      )}
-      {presenting && (
-        <>
-          <svg
-            className={`presentation-ink ${pen ? 'drawing' : ''}`}
-            onPointerDown={(e) => {
-              stop();
-              e.currentTarget.setPointerCapture(e.pointerId);
-              const b = e.currentTarget.getBoundingClientRect();
-              ink.current = {
-                color: penColor,
-                width: penWidth,
-                  points: [[e.clientX - b.x, e.clientY - b.y], [e.clientX - b.x + 0.01, e.clientY - b.y]],
-              };
-              setStrokes((s) => [...s, ink.current]);
-            }}
-            onPointerMove={(e) => {
-              if (!ink.current) return;
-              const b = e.currentTarget.getBoundingClientRect();
-              ink.current = {
-                ...ink.current,
-                points: [
-                  ...ink.current.points,
-                  [e.clientX - b.x, e.clientY - b.y],
-                ],
-              };
-              setStrokes((s) => [...s.slice(0, -1), ink.current]);
-            }}
-            onPointerUp={() => {
-              ink.current = null;
-            }}
-            onPointerCancel={() => {
-              ink.current = null;
+          <div
+            role="menu"
+            className="scene-context-menu"
+            style={{ left: sceneMenu.x, top: sceneMenu.y }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setSceneMenu(null);
             }}
           >
-            {strokes.map((s, i) => (
-              <polyline
-                key={i}
-                points={s.points.map((p) => p.join(',')).join(' ')}
-                fill="none"
-                stroke={s.color}
-                strokeWidth={s.width}
+            <button
+              role="menuitem"
+              autoFocus
+              onClick={() => {
+                setEditingScene(sceneMenu.id);
+                setSceneMenu(null);
+              }}
+            >
+              改名
+            </button>
+            <button
+              role="menuitem"
+              onClick={() => {
+                stop();
+                setSelecting(sceneMenu.id);
+                setSceneMenu(null);
+              }}
+            >
+              重框
+            </button>
+            <button
+              role="menuitem"
+              disabled={scenes[0]?.id === sceneMenu.id}
+              onClick={() => {
+                const next = [...scenes];
+                const i = next.findIndex((s) => s.id === sceneMenu.id);
+                [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                updateScenes(next);
+                setSceneMenu(null);
+              }}
+            >
+              上移
+            </button>
+            <button
+              role="menuitem"
+              onClick={() => {
+                updateScenes(scenes.filter((s) => s.id !== sceneMenu.id));
+                setSceneMenu(null);
+              }}
+            >
+              删除场景
+            </button>
+          </div>
+        </div>
+      )}
+      {!presenting && (
+        <>
+          <button
+            className="export-toggle"
+            aria-label="导出"
+            title="导出"
+            disabled={!doc || busy}
+            aria-expanded={exportMenu}
+            onClick={() => setExportMenu(!exportMenu)}
+          >
+            <svg
+              width="22"
+              height="18"
+              viewBox="0 0 24 20"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M12 13V2m-4 4 4-4 4 4M3 12v6h18v-6"
+                stroke="currentColor"
+                strokeWidth="1.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
-            ))}
-          </svg>
+            </svg>
+          </button>
+          {exportMenu && (
+            <div className="export-menu" role="dialog" aria-label="导出选项">
+              <strong>导出</strong>
+              <span className="hint">
+                范围：{exportRegion ? '已框选区域' : '整张白板'}
+              </span>
+              <div className="actions">
+                <button
+                  onClick={() => {
+                    setExportMenu(false);
+                    setSelecting('export');
+                    stop();
+                  }}
+                >
+                  框选导出区域
+                </button>
+                <button onClick={() => setExportRegion(null)}>整张白板</button>
+              </div>
+              <button
+                disabled={busy}
+                onClick={() => run(() => exportGraphic('png'))}
+              >
+                导出 PNG
+              </button>
+              <button
+                disabled={busy}
+                onClick={() => run(() => exportGraphic('svg'))}
+              >
+                导出 SVG
+              </button>
+              <button
+                disabled={busy}
+                onClick={() => run(() => exportPDF(false))}
+              >
+                导出 PDF
+              </button>
+              <button
+                disabled={busy || !scenes.length}
+                onClick={() => run(() => exportPDF(true))}
+              >
+                场景 PDF
+              </button>
+              <small>可编辑格式保存完整白板，包含区域外内容。</small>
+              <button
+                disabled={busy}
+                onClick={() =>
+                  run(() => {
+                    flush();
+                    return bridge.invoke(
+                      'exportDocument',
+                      doc.id,
+                      active.current.data,
+                      false,
+                    );
+                  })
+                }
+              >
+                导出完整文档
+              </button>
+              <button
+                disabled={busy}
+                onClick={() =>
+                  run(() => {
+                    flush();
+                    return bridge.invoke(
+                      'exportDocument',
+                      doc.id,
+                      active.current.data,
+                      true,
+                    );
+                  })
+                }
+              >
+                导出 .excalidraw
+              </button>
+              <button onClick={() => setExportMenu(false)}>关闭导出</button>
+            </div>
+          )}
+          <button
+            className="scene-panel-toggle"
+            onClick={toggleSidebar}
+            title={sidebar ? '隐藏场景' : '显示场景'}
+            aria-label={sidebar ? '隐藏场景' : '显示场景'}
+            aria-pressed={sidebar}
+          >
+            <PanelIcon />
+          </button>
+        </>
+      )}
+      {presenting && (
+        <>
+          <div
+            className={`presentation-ink ${pen ? 'drawing' : ''}`}
+            data-ink-count={inkCount}
+            onPointerDownCapture={stop}
+          >
+            <Excalidraw
+              langCode="zh-CN"
+              viewModeEnabled={!pen}
+              initialData={{
+                elements: [],
+                appState: {
+                  viewBackgroundColor: 'transparent',
+                  currentItemStrokeColor: '#e03131',
+                  currentItemStrokeWidth: 2,
+                  activeTool: { type: 'freedraw', locked: true },
+                  ...savedView.current,
+                },
+              }}
+              excalidrawAPI={(value) => {
+                inkApi.current = value;
+              }}
+              onChange={(elements, state) => {
+                setInkCount(elements.filter((e) => !e.isDeleted).length);
+                if (!presentation.current || !api.current) return;
+                const current = api.current.getAppState();
+                if (
+                  current.scrollX !== state.scrollX ||
+                  current.scrollY !== state.scrollY ||
+                  current.zoom.value !== state.zoom.value
+                )
+                  api.current.updateScene({
+                    appState: {
+                      scrollX: state.scrollX,
+                      scrollY: state.scrollY,
+                      zoom: state.zoom,
+                    },
+                    captureUpdate: CaptureUpdateAction.NEVER,
+                  });
+              }}
+            />
+          </div>
           <div className="presentation-controls">
             <button
               aria-label="上一场景"
@@ -921,35 +1208,20 @@ function App() {
             </button>
             <button
               aria-pressed={pen}
+              disabled={!presentationReady}
               onClick={() => {
                 stop();
                 setPen(!pen);
+                if (!pen)
+                  inkApi.current?.setActiveTool({
+                    type: 'freedraw',
+                    locked: true,
+                  });
               }}
             >
               临时画笔
             </button>
-            {pen && (
-              <>
-                <input
-                  aria-label="画笔颜色"
-                  type="color"
-                  value={penColor}
-                  onChange={(e) => setPenColor(e.target.value)}
-                />
-                <select
-                  aria-label="画笔粗细"
-                  value={penWidth}
-                  onChange={(e) => setPenWidth(Number(e.target.value))}
-                >
-                  {[1, 3, 6, 10].map((w) => (
-                    <option key={w} value={w}>
-                      {w} px
-                    </option>
-                  ))}
-                </select>
-              </>
-            )}
-            <button onClick={() => setStrokes([])}>清除</button>
+            <button onClick={clearInk}>清除</button>
             <button onClick={() => run(exitPresentation)}>退出演示</button>
           </div>
         </>

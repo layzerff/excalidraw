@@ -53,6 +53,46 @@ else {
         trash: (...args) => store.trash(...args),
         getSetting: (key) => store.getSetting(key),
         setSetting: (...args) => store.setSetting(...args),
+        async exportGraphic(title, format, value) {
+          if (
+            !['png', 'svg'].includes(format) ||
+            typeof value !== 'string' ||
+            value.length > 200 * 1024 * 1024
+          )
+            throw new Error('导出数据无效');
+          if (
+            format === 'png' &&
+            !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(value)
+          )
+            throw new Error('PNG 数据无效');
+          if (format === 'svg' && !value.startsWith('<svg'))
+            throw new Error('SVG 数据无效');
+          const result = await dialog.showSaveDialog(win, {
+            defaultPath: `${String(title).replace(/[\\/:*?"<>|]/g, '_')}.${format}`,
+            filters: [{ name: format.toUpperCase(), extensions: [format] }],
+          });
+          if (result.canceled) return false;
+          const temporary = `${result.filePath}.${process.pid}.tmp`;
+          const fd = fs.openSync(temporary, 'wx');
+          try {
+            fs.writeFileSync(
+              fd,
+              format === 'png'
+                ? Buffer.from(value.split(',')[1], 'base64')
+                : value,
+            );
+            fs.fsyncSync(fd);
+          } finally {
+            fs.closeSync(fd);
+          }
+          try {
+            fs.renameSync(temporary, result.filePath);
+          } catch (error) {
+            fs.unlinkSync(temporary);
+            throw error;
+          }
+          return true;
+        },
         async importLibrary() {
           const result = await dialog.showOpenDialog(win, {
             properties: ['openFile'],

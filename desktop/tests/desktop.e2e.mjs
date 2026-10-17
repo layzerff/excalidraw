@@ -33,6 +33,19 @@ async function data(page) {
     return (await b.invoke('read', id)).data;
   });
 }
+async function storedDocument(page) {
+  return page.evaluate(async () => {
+    const b =
+      document.getElementById('root').ownerDocument.defaultView.workspace;
+    return b.invoke('read', await b.invoke('getSetting', 'activeDocument'));
+  });
+}
+async function exportClick(page, name) {
+  if (!(await page.getByRole('dialog', { name: '导出选项' }).isVisible()))
+    await page.getByRole('button', { name: '导出', exact: true }).click();
+  await page.getByRole('button', { name, exact: true }).click();
+  await page.getByRole('button', { name: '关闭导出', exact: true }).click();
+}
 try {
   let page = await launch();
   console.log(
@@ -55,6 +68,14 @@ try {
     return result;
   });
   expect(fonts).toEqual({ Excalifont: true, Virgil: true, Xiaolai: true });
+  await expect(
+    page
+      .locator('.files > .actions')
+      .getByRole('button', { name: '保存', exact: true }),
+  ).toHaveCount(1);
+  await expect(
+    page.locator('.scenes').getByRole('button', { name: '保存', exact: true }),
+  ).toHaveCount(0);
   await page.locator('.duration select').selectOption('500');
   await page.getByRole('button', { name: '保存当前视图', exact: true }).click();
   await expect(page.locator('.scene')).toHaveCount(1);
@@ -65,20 +86,27 @@ try {
   await page.mouse.move(box.x + 450, box.y + 350, { steps: 12 });
   await page.mouse.up();
   await expect(page.locator('.scene')).toHaveCount(2);
-  await page
-    .locator('.scene')
-    .nth(1)
-    .getByRole('button', { name: '改名', exact: true })
-    .click();
-  await page.locator('.modal input').fill('局部细节');
-  await page.getByRole('button', { name: '确定', exact: true }).click();
-  await page.locator('.scene').nth(1).getByTitle('上移').click();
+  await expect(
+    page.locator('.scenes').getByRole('button', { name: '导入素材库' }),
+  ).toHaveCount(0);
+  await page.locator('.scene').nth(1).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: '改名', exact: true }).click();
+  await page.getByLabel('场景标题', { exact: true }).fill('局部细节');
+  await page.getByLabel('场景标题', { exact: true }).press('Enter');
+  await expect(page.locator('.modal')).toHaveCount(0);
+  await page.locator('.scene').nth(1).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: '上移', exact: true }).click();
   await expect(page.locator('.scene').first()).toContainText('局部细节');
+  await page.locator('.scene-target').first().dblclick();
+  await page.getByLabel('场景标题', { exact: true }).fill('取消的名字');
+  await page.getByLabel('场景标题', { exact: true }).press('Escape');
+  await expect(page.locator('.scene').first()).toContainText('局部细节');
+  const lastSceneBounds = await page.locator('.scene').last().boundingBox();
   await page
     .locator('.drag-handle')
     .first()
     .dragTo(page.locator('.scene').last(), {
-      targetPosition: { x: 60, y: 50 },
+      targetPosition: { x: 60, y: lastSceneBounds.height - 3 },
     });
   await expect(page.locator('.scene').last()).toContainText('局部细节');
   await page
@@ -123,16 +151,50 @@ try {
         (await data(page)).elements.filter((e) => !e.isDeleted).length,
     )
     .toBe(1);
+  const beforeNavigation = await storedDocument(page);
+  const zoomButton = page
+    .locator('.canvas')
+    .getByRole('button', { name: '重置缩放', exact: true });
+  const initialZoom = await zoomButton.innerText();
   await page.locator('.scene-target').first().click();
-  await expect
-    .poll(async () => (await data(page)).appState.zoom?.value)
-    .not.toBe(1);
+  await expect(zoomButton).not.toHaveText(initialZoom);
   await page.keyboard.press('Escape');
   // Confirm cancellation stops updates, rather than merely accepting the Escape key.
   await expect(page.locator('.save-state')).toHaveText('已保存到本机');
-  const stopped = (await data(page)).appState;
+  const stopped = await zoomButton.innerText();
   await page.waitForTimeout(600);
-  expect((await data(page)).appState).toEqual(stopped);
+  expect(await zoomButton.innerText()).toEqual(stopped);
+  expect((await storedDocument(page)).revision).toBe(beforeNavigation.revision);
+  await page.locator('.scene-target').last().click();
+  await page.waitForTimeout(750);
+  await page.locator('.canvas').hover({ position: { x: 500, y: 300 } });
+  await page.mouse.wheel(0, 180);
+  await page.waitForTimeout(750);
+  expect((await storedDocument(page)).revision).toBe(beforeNavigation.revision);
+  expect((await data(page)).appState).toEqual(beforeNavigation.data.appState);
+  await page.keyboard.press(
+    process.platform === 'darwin' ? 'Meta+s' : 'Control+s',
+  );
+  await expect
+    .poll(async () => (await storedDocument(page)).revision)
+    .toBeGreaterThan(beforeNavigation.revision);
+  expect((await data(page)).appState).not.toEqual(
+    beforeNavigation.data.appState,
+  );
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  const manuallySaved = await storedDocument(page);
+  await page.locator('.canvas').hover({ position: { x: 500, y: 300 } });
+  await page.mouse.wheel(0, 120);
+  await page.waitForTimeout(650);
+  expect((await storedDocument(page)).revision).toBe(manuallySaved.revision);
+  await page
+    .locator('.canvas')
+    .getByRole('button', { name: '#e03131', exact: true })
+    .click();
+  await expect
+    .poll(async () => (await data(page)).elements[0].strokeColor)
+    .toBe('#e03131');
+  expect((await data(page)).appState).toEqual(manuallySaved.data.appState);
   await page.getByRole('button', { name: '隐藏场景', exact: true }).click();
   await expect(page.locator('.scene-panel-toggle')).toHaveCount(1);
   await expect(page.locator('.scenes')).toBeHidden();
@@ -147,10 +209,39 @@ try {
   await page.mouse.down();
   await page.mouse.move(650, 400, { steps: 15 });
   await page.mouse.up();
-  await expect(page.locator('.presentation-ink polyline')).toHaveCount(1);
-  await page.getByRole('button', { name: '下一场景', exact: true }).click();
-  await expect(page.locator('.presentation-ink polyline')).toHaveCount(0);
+  await expect(page.locator('.presentation-ink')).toHaveAttribute(
+    'data-ink-count',
+    '1',
+  );
+  await page.keyboard.press(
+    process.platform === 'darwin' ? 'Meta+z' : 'Control+z',
+  );
+  await expect(page.locator('.presentation-ink')).toHaveAttribute(
+    'data-ink-count',
+    '0',
+  );
+  await page.keyboard.press(
+    process.platform === 'darwin' ? 'Meta+Shift+z' : 'Control+Shift+z',
+  );
+  await expect(page.locator('.presentation-ink')).toHaveAttribute(
+    'data-ink-count',
+    '1',
+  );
+  await expect(
+    page
+      .locator('.presentation-ink')
+      .getByRole('group', { name: '描边宽度', exact: true }),
+  ).toBeVisible();
+  await page
+    .locator('.presentation-ink')
+    .getByRole('button', { name: '#1971c2', exact: true })
+    .click();
   await page.screenshot({ path: 'test-results/presentation.png' });
+  await page.getByRole('button', { name: '上一场景', exact: true }).click();
+  await expect(page.locator('.presentation-ink')).toHaveAttribute(
+    'data-ink-count',
+    '0',
+  );
   await page.getByRole('button', { name: '退出演示', exact: true }).click();
   await expect(page.locator('.presentation-controls')).toHaveCount(0);
   expect((await data(page)).elements).toEqual(originalElements);
@@ -176,11 +267,26 @@ try {
       filePaths: [filePath],
     });
   }, lib);
-  await page.getByRole('button', { name: '导入素材库', exact: true }).click();
+  const dropLibrary = () =>
+    page.locator('.canvas > .excalidraw').evaluate(
+      (element, json) => {
+        const transfer = new DataTransfer();
+        transfer.items.add(
+          new File([json], 'sample.excalidrawlib', {
+            type: 'application/vnd.excalidrawlib+json',
+          }),
+        );
+        element.dispatchEvent(
+          new DragEvent('drop', { bubbles: true, dataTransfer: transfer }),
+        );
+      },
+      readFileSync(lib, 'utf8'),
+    );
+  await dropLibrary();
   await expect
     .poll(async () => (await data(page)).libraryItems?.length || 0)
     .toBe(1);
-  await page.getByRole('button', { name: '导入素材库', exact: true }).click();
+  await dropLibrary();
   await expect
     .poll(async () => (await data(page)).libraryItems?.length || 0)
     .toBe(1);
@@ -188,7 +294,7 @@ try {
   await app.evaluate(({ dialog }, filePath) => {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath });
   }, pdf);
-  await page.getByRole('button', { name: '场景 PDF', exact: true }).click();
+  await exportClick(page, '场景 PDF');
   await expect
     .poll(() => {
       try {
@@ -213,7 +319,7 @@ try {
   await app.evaluate(({ dialog }, filePath) => {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath });
   }, exported);
-  await page.getByRole('button', { name: '导出完整文档', exact: true }).click();
+  await exportClick(page, '导出完整文档');
   await expect
     .poll(() => {
       try {
@@ -226,9 +332,7 @@ try {
   await app.evaluate(({ dialog }, filePath) => {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath });
   }, native);
-  await page
-    .getByRole('button', { name: '导出 .excalidraw', exact: true })
-    .click();
+  await exportClick(page, '导出 .excalidraw');
   await expect
     .poll(() => {
       try {
@@ -316,7 +420,7 @@ try {
   await app.evaluate(({ dialog }, filePath) => {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath });
   }, textPDF);
-  await page.getByRole('button', { name: '导出 PDF', exact: true }).click();
+  await exportClick(page, '导出 PDF');
   await expect
     .poll(() => {
       try {
@@ -327,6 +431,63 @@ try {
     })
     .toBe('%PDF-');
   copyFileSync(textPDF, 'test-results/text.pdf');
+  await page.getByRole('button', { name: '导出', exact: true }).click();
+  await page.getByRole('button', { name: '框选导出区域', exact: true }).click();
+  const regionBox = await page.locator('.selection-layer').boundingBox();
+  await page.mouse.move(regionBox.x + 380, regionBox.y + 150);
+  await page.mouse.down();
+  await page.mouse.move(regionBox.x + 650, regionBox.y + 230, { steps: 10 });
+  await page.mouse.up();
+  await expect(page.getByRole('dialog', { name: '导出选项' })).toContainText(
+    '已框选区域',
+  );
+  await expect(page.locator('.scene')).toHaveCount(2);
+  await page.screenshot({ path: 'test-results/export-current.png' });
+  const png = join(profile, 'region.png');
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath });
+  }, png);
+  await exportClick(page, '导出 PNG');
+  await expect
+    .poll(() => {
+      try {
+        return readFileSync(png).readUInt32BE(16);
+      } catch {
+        return 0;
+      }
+    })
+    .toBe(540);
+  expect(readFileSync(png).readUInt32BE(20)).toBe(160);
+  copyFileSync(png, 'test-results/region.png');
+  const svg = join(profile, 'region.svg');
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath });
+  }, svg);
+  await exportClick(page, '导出 SVG');
+  await expect
+    .poll(() => {
+      try {
+        return readFileSync(svg, 'utf8').includes('<svg');
+      } catch {
+        return false;
+      }
+    })
+    .toBe(true);
+  const croppedPDF = join(profile, 'region.pdf');
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath });
+  }, croppedPDF);
+  await exportClick(page, '导出 PDF');
+  await expect
+    .poll(() => {
+      try {
+        return readFileSync(croppedPDF).subarray(0, 5).toString();
+      } catch {
+        return '';
+      }
+    })
+    .toBe('%PDF-');
+  copyFileSync(croppedPDF, 'test-results/region.pdf');
   console.log(
     'PASS: real Electron drawing, undo/redo, region selection, title, order, interrupted animation, document switching, file export/import, backup/restore, close-time flush, restart persistence',
   );
