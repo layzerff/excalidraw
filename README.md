@@ -47,4 +47,4 @@ npm start
 
 ## 上游与许可证
 
-感谢 [Excalidraw](https://github.com/excalidraw/excalidraw)。保留 [MIT LICENSE](LICENSE)；第三方依赖及字体声明随桌面构建生成。未使用 Revezone 源码或接入 Excalidraw+ 付费服务。
+感谢 [Excalidraw](https://github.com/excalidraw/excalidraw)。保留 [MIT LICENSE](LICENSE)；第三方依赖及字体声明随桌面构建生成。
