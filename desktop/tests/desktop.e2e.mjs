@@ -76,7 +76,7 @@ try {
   await expect(
     page.locator('.scenes').getByRole('button', { name: '保存', exact: true }),
   ).toHaveCount(0);
-  await page.locator('.duration select').selectOption('500');
+  await expect(page.locator('.scenes .duration select')).toHaveCount(0);
   await page.getByRole('button', { name: '保存当前视图', exact: true }).click();
   await expect(page.locator('.scene')).toHaveCount(1);
   await page.getByRole('button', { name: '＋ 框选区域', exact: true }).click();
@@ -202,8 +202,51 @@ try {
   await expect(page.locator('.scenes')).toBeVisible();
   await expect(page.locator('header .scene-panel-toggle')).toHaveCount(0);
   const originalElements = (await data(page)).elements;
+  await page
+    .getByRole('button', { name: '▧ 我的第一张白板', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: '▧ 我的第一张白板', exact: true })
+    .click();
+  await page.getByRole('button', { name: '保存', exact: true }).click();
   await page.getByRole('button', { name: '▶ 演示', exact: true }).click();
   await expect(page.locator('.presentation-controls')).toBeVisible();
+  await expect(page.locator('.presentation-controls')).toContainText('1 / 2');
+  await page.getByRole('button', { name: '图层', exact: true }).click();
+  await expect(page.locator('.scenes')).toBeVisible();
+  await page.locator('.scene').first().click({ button: 'right' });
+  await page.getByRole('menuitem', { name: '改名', exact: true }).click();
+  await page.getByLabel('场景标题', { exact: true }).press('Enter');
+  await page.getByRole('button', { name: '图层', exact: true }).click();
+  await page.getByRole('button', { name: '图层', exact: true }).click();
+  const layerLast = await page.locator('.scene').last().boundingBox();
+  await page
+    .locator('.drag-handle')
+    .first()
+    .dragTo(page.locator('.scene').last(), {
+      targetPosition: { x: 60, y: layerLast.height - 3 },
+    });
+  await expect(page.locator('.scene').last()).toContainText('局部细节');
+  await page
+    .locator('.drag-handle')
+    .last()
+    .dragTo(page.locator('.scene').first(), {
+      targetPosition: { x: 60, y: 2 },
+    });
+  await expect(page.locator('.scene').first()).toContainText('局部细节');
+  await page.screenshot({ path: 'test-results/layers-current.png' });
+  await page.getByRole('button', { name: '图层', exact: true }).click();
+  for (const speed of ['500', '1000', '1500', '2000'])
+    await page.getByLabel('演示移动时长').selectOption(speed);
+  await page.getByLabel('演示移动时长').selectOption('500');
+  await page.getByRole('button', { name: '自动演示', exact: true }).click();
+  await expect(page.locator('.presentation-controls')).toContainText('2 / 2', {
+    timeout: 7000,
+  });
+  await expect(
+    page.getByRole('button', { name: '自动演示', exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: '上一场景', exact: true }).click();
   await page.getByRole('button', { name: '临时画笔', exact: true }).click();
   await page.mouse.move(400, 300);
   await page.mouse.down();
@@ -213,6 +256,7 @@ try {
     'data-ink-count',
     '1',
   );
+  await page.waitForTimeout(150);
   await page.keyboard.press(
     process.platform === 'darwin' ? 'Meta+z' : 'Control+z',
   );
@@ -237,7 +281,7 @@ try {
     .getByRole('button', { name: '#1971c2', exact: true })
     .click();
   await page.screenshot({ path: 'test-results/presentation.png' });
-  await page.getByRole('button', { name: '上一场景', exact: true }).click();
+  await page.getByRole('button', { name: '下一场景', exact: true }).click();
   await expect(page.locator('.presentation-ink')).toHaveAttribute(
     'data-ink-count',
     '0',
@@ -488,6 +532,48 @@ try {
     })
     .toBe('%PDF-');
   copyFileSync(croppedPDF, 'test-results/region.pdf');
+  const saveAs = join(profile, 'save-as.canvas.json');
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath });
+  }, saveAs);
+  await page.getByRole('button', { name: '另存为', exact: true }).click();
+  await expect
+    .poll(() => {
+      try {
+        return JSON.parse(readFileSync(saveAs, 'utf8')).data.scenes.length;
+      } catch {
+        return 0;
+      }
+    })
+    .toBe(2);
+  const relocated = join(profile, 'relocated');
+  mkdirSync(relocated);
+  await app.evaluate(({ dialog }, folder) => {
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [folder],
+    });
+  }, relocated);
+  await page.getByRole('button', { name: '保存位置', exact: true }).click();
+  await expect(page.locator('.storage-path').first()).toContainText(profile);
+  await page
+    .getByRole('button', { name: '更改工作区位置', exact: true })
+    .click();
+  await expect(
+    page.getByRole('button', { name: '重启应用', exact: true }),
+  ).toBeVisible();
+  await app.close();
+  app = null;
+  page = await launch();
+  await expect(page.locator('.scene')).toHaveCount(2);
+  expect(
+    (await data(page)).elements.filter(
+      (e) => e.type === 'text' && !e.isDeleted,
+    ),
+  ).toHaveLength(1);
+  await page.getByRole('button', { name: '保存位置', exact: true }).click();
+  await expect(page.locator('.storage-path').first()).toContainText(relocated);
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
   console.log(
     'PASS: real Electron drawing, undo/redo, region selection, title, order, interrupted animation, document switching, file export/import, backup/restore, close-time flush, restart persistence',
   );

@@ -38,6 +38,10 @@ npm start
 
 ## Data and recovery
 
+Default macOS folder: `~/Library/Application Support/Local Canvas/`; default Windows folder: `%APPDATA%/Local Canvas/`. The Save Location panel shows the actual database and backup paths, including custom locations. Choose Change Workspace Location to migrate a consistent SQLite snapshot and backup folder to a new `Local Canvas` subfolder. Nonempty targets are rejected, original data is retained, and editing is blocked until restart. The profile's `storage-location.json` points to the migrated folder; a missing external drive causes a visible startup error rather than opening an empty database. Save As writes a portable full document to a chosen file and does not change the workspace database location.
+
+Presentation always begins with the first ordered scene. The Layers button opens the same draggable scene list and context menu during fullscreen. Editing navigation is fixed at 500 ms; presentation controls offer 500/1000/1500/2000 ms for arrows and automatic playback. Automatic playback waits three seconds after each transition and stops at the last scene; opening Layers or the pen pauses it.
+
 Database: Electron `app.getPath('userData')/workspace.sqlite`; daily startup snapshots: `userData/backups/`. Development and packaged builds both use the `Local Canvas` profile under the operating system's application-data directory. Set `LOCAL_CANVAS_DATA` to an absolute dedicated directory for tests or an explicit profile.
 
 Keep external backups on another disk. Daily snapshots on the same disk do not protect against disk failure. Importing a backup never overwrites the current workspace. Individual document payload limit is 100 MB, backup import file limit 500 MB; these are safety limits on a single operation, not document-count quotas.

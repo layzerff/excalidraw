@@ -577,6 +577,39 @@ select {
 .drag-handle:active {
   cursor: grabbing;
 }
+.presenting.show-layers > .scenes {
+  display: flex !important;
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  bottom: 100px;
+  width: 245px;
+  z-index: 45;
+  background: #fafbf8;
+  border: 1px solid #dedfd9;
+  border-radius: 10px;
+  box-shadow: 0 6px 25px #0002;
+}
+.presenting .scenes .scene-create,
+.presenting .scenes > .hint {
+  display: none;
+}
+.auto-hint {
+  color: #7e8982;
+  font-size: 11px;
+}
+.files > .actions {
+  flex-wrap: wrap;
+}
+.storage-path {
+  overflow-wrap: anywhere;
+  max-width: 600px;
+}
+.presentation-controls {
+  max-width: calc(100vw - 24px);
+  flex-wrap: wrap;
+  justify-content: center;
+}
 .presenting .excalidraw footer,
 .presenting .excalidraw .layer-ui__wrapper__footer-left,
 .presenting .excalidraw .layer-ui__wrapper__footer-right {

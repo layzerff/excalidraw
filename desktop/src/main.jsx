@@ -101,12 +101,19 @@ function App() {
   const [scenes, setScenes] = useState([]),
     [selecting, setSelecting] = useState(null),
     [selection, setSelection] = useState(null);
-  const [duration, setDuration] = useState(2200),
+  const [duration, setDuration] = useState(500),
     [trash, setTrash] = useState(false),
     [form, setForm] = useState(null);
   const [sidebar, setSidebar] = useState(true);
   const [presenting, setPresenting] = useState(false);
   const [presentationReady, setPresentationReady] = useState(false);
+  const [layers, setLayers] = useState(false);
+  const [autoPlay, setAutoPlay] = useState(false);
+  const [editorEpoch, setEditorEpoch] = useState(0);
+  const [editorReady, setEditorReady] = useState(false);
+  const [storageInfo, setStorageInfo] = useState(null);
+  const [storageDialog, setStorageDialog] = useState(false);
+  const [storagePending, setStoragePending] = useState(false);
   const [currentScene, setCurrentScene] = useState(null);
   const [pen, setPen] = useState(false);
   const [inkCount, setInkCount] = useState(0);
@@ -196,7 +203,14 @@ function App() {
     }, 500);
   };
   const manualSave = () => {
-    if (!api.current || !active.current || presentation.current) return;
+    if (
+      !api.current ||
+      !active.current ||
+      presentation.current ||
+      storagePending ||
+      busy
+    )
+      return;
     stop();
     const focused = root.ownerDocument.activeElement;
     if (root.contains(focused)) focused.blur();
@@ -224,6 +238,10 @@ function App() {
   };
   const switchDoc = async (id) => {
     if (busy) return;
+    if (active.current?.id === id && api.current) {
+      flush();
+      return;
+    }
     setBusy(true);
     try {
       flush();
@@ -234,6 +252,8 @@ function App() {
       setExportRegion(null);
       const next = await bridge.invoke('read', id);
       api.current = null;
+      setEditorReady(false);
+      setEditorEpoch((value) => value + 1);
       active.current = next;
       dirty.current = false;
       setScenes(next.data.scenes);
@@ -253,6 +273,7 @@ function App() {
     }
     run(async () => {
       const list = await refresh();
+      setStorageInfo(await bridge.invoke('storageInfo'));
       const saved = await bridge.invoke('getSetting', 'activeDocument');
       setSidebar((await bridge.invoke('getSetting', 'sceneSidebar')) !== false);
       const id =
@@ -347,7 +368,10 @@ function App() {
       to = targetView(scene.rect, state.width, state.height);
     const began = ownerWindow.performance.now();
     const animate = (now) => {
-      const t = Math.min(1, (now - began) / duration),
+      const t = Math.min(
+          1,
+          (now - began) / (presentation.current ? duration : 500),
+        ),
         v = interpolate(from, to, t);
       api.current?.updateScene({
         appState: {
@@ -374,6 +398,8 @@ function App() {
     stop();
     presentation.current = false;
     setPresenting(false);
+    setLayers(false);
+    setAutoPlay(false);
     setPresentationReady(false);
     setPen(false);
     clearInk();
@@ -409,6 +435,8 @@ function App() {
       );
   }, []);
   const beginPresentation = async () => {
+    if (!api.current || !scenes.length)
+      throw new Error('编辑器尚未准备好，请重新选择白板后重试');
     flush();
     const state = api.current.getAppState();
     savedView.current = {
@@ -421,10 +449,23 @@ function App() {
     setPresentationReady(false);
     setPresenting(true);
     presentationTimer.current = ownerWindow.setTimeout(() => {
-      navigate(scenes.find((s) => s.id === currentScene) || scenes[0]);
+      navigate(scenes[0]);
       setPresentationReady(true);
     }, 150);
   };
+  useEffect(() => {
+    if (!presenting || !autoPlay || !presentationReady) return;
+    const index = scenes.findIndex((s) => s.id === currentScene);
+    if (index >= scenes.length - 1) {
+      setAutoPlay(false);
+      return;
+    }
+    const timer = ownerWindow.setTimeout(
+      () => latest.current.step(1),
+      duration + 3000,
+    );
+    return () => ownerWindow.clearTimeout(timer);
+  }, [presenting, autoPlay, presentationReady, currentScene, duration, scenes]);
   useEffect(() => {
     if (presenting && pen)
       inkApi.current?.setActiveTool({ type: 'freedraw', locked: true });
@@ -595,7 +636,7 @@ function App() {
   };
   return (
     <div
-      className={`workspace ${!sidebar ? 'sidebar-hidden' : ''} ${presenting ? 'presenting' : ''}`}
+      className={`workspace ${!sidebar ? 'sidebar-hidden' : ''} ${presenting ? 'presenting' : ''} ${layers ? 'show-layers' : ''}`}
     >
       <aside className="files">
         <div className="brand">
@@ -618,6 +659,22 @@ function App() {
           >
             保存
           </button>
+          <button
+            disabled={!doc || busy}
+            onClick={() =>
+              run(() => {
+                manualSave();
+                return bridge.invoke(
+                  'exportDocument',
+                  doc.id,
+                  active.current.data,
+                  false,
+                );
+              })
+            }
+          >
+            另存为
+          </button>
         </div>
         <button
           className={`root ${folder === null ? 'selected' : ''}`}
@@ -627,6 +684,7 @@ function App() {
         </button>
         <div className="tree">{tree()}</div>
         <div className="file-tools">
+          <button onClick={() => setStorageDialog(true)}>保存位置</button>
           <button
             onClick={() =>
               run(async () => {
@@ -687,12 +745,13 @@ function App() {
         >
           {doc ? (
             <Excalidraw
-              key={doc.id}
+              key={`${doc.id}:${editorEpoch}`}
               langCode="zh-CN"
               showDeprecatedFonts
               viewModeEnabled={presenting}
               excalidrawAPI={(value) => {
                 api.current = value;
+                setEditorReady(true);
               }}
               initialData={{
                 ...doc.data,
@@ -704,7 +763,7 @@ function App() {
                   changed({ ...active.current.data, libraryItems });
               }}
               onChange={(elements, appState, files) => {
-                if (presentation.current) return;
+                if (presentation.current || storagePending) return;
                 if (active.current?.id !== doc.id) return;
                 const data = JSON.parse(
                   serializeAsJSON(elements, appState, files, 'local'),
@@ -807,7 +866,7 @@ function App() {
         <p className="hint">为同一张白板保存不同区域，点击场景平滑导航。</p>
         <div className="scene-create">
           <button
-            disabled={!doc || !scenes.length}
+            disabled={!doc || !scenes.length || !editorReady}
             onClick={() => run(beginPresentation)}
           >
             ▶ 演示
@@ -830,19 +889,6 @@ function App() {
             保存当前视图
           </button>
         </div>
-        <label className="duration">
-          移动时长{' '}
-          <select
-            value={duration}
-            onChange={(e) => setDuration(Number(e.target.value))}
-          >
-            <option value={500}>0.5 秒</option>
-            <option value={1200}>1.2 秒</option>
-            <option value={2200}>2.2 秒</option>
-            <option value={3500}>3.5 秒</option>
-            <option value={5000}>5 秒</option>
-          </select>
-        </label>
         <div
           className="scene-list"
           onDragOver={(e) => {
@@ -938,6 +984,7 @@ function App() {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') e.currentTarget.blur();
                     if (e.key === 'Escape') {
+                      e.stopPropagation();
                       e.currentTarget.value = s.title;
                       e.currentTarget.blur();
                     }
@@ -978,7 +1025,10 @@ function App() {
             style={{ left: sceneMenu.x, top: sceneMenu.y }}
             onPointerDown={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
-              if (e.key === 'Escape') setSceneMenu(null);
+              if (e.key === 'Escape') {
+                e.stopPropagation();
+                setSceneMenu(null);
+              }
             }}
           >
             <button
@@ -1151,6 +1201,7 @@ function App() {
             <Excalidraw
               langCode="zh-CN"
               viewModeEnabled={!pen}
+              handleKeyboardGlobally
               initialData={{
                 elements: [],
                 appState: {
@@ -1186,6 +1237,42 @@ function App() {
           </div>
           <div className="presentation-controls">
             <button
+              aria-pressed={layers}
+              onClick={() => {
+                setLayers(!layers);
+                setAutoPlay(false);
+              }}
+            >
+              图层
+            </button>
+            <button
+              disabled={!presentationReady || scenes.length < 2}
+              aria-pressed={autoPlay}
+              onClick={() => {
+                if (!autoPlay && currentScene === scenes.at(-1)?.id)
+                  navigate(scenes[0]);
+                setPen(false);
+                setAutoPlay(!autoPlay);
+              }}
+            >
+              {autoPlay ? '暂停自动演示' : '自动演示'}
+            </button>
+            <label>
+              移动{' '}
+              <select
+                aria-label="演示移动时长"
+                value={duration}
+                onChange={(e) => setDuration(Number(e.target.value))}
+              >
+                {[500, 1000, 1500, 2000].map((ms) => (
+                  <option key={ms} value={ms}>
+                    {ms / 1000} 秒
+                  </option>
+                ))}
+              </select>
+            </label>
+            <span className="auto-hint">自动停留 3 秒</span>
+            <button
               aria-label="上一场景"
               disabled={scenes.findIndex((s) => s.id === currentScene) <= 0}
               onClick={() => step(-1)}
@@ -1212,6 +1299,7 @@ function App() {
               onClick={() => {
                 stop();
                 setPen(!pen);
+                setAutoPlay(false);
                 if (!pen)
                   inkApi.current?.setActiveTool({
                     type: 'freedraw',
@@ -1248,6 +1336,59 @@ function App() {
                 </p>
               ))}
             <button onClick={() => setTrash(false)}>关闭</button>
+          </section>
+        </div>
+      )}
+      {storageDialog && (
+        <div className="modal-backdrop">
+          <section className="modal">
+            <h2>工作区保存位置</h2>
+            <p>
+              自动保存到本机 SQLite 工作区；另存为可选择完整白板文件的位置。
+            </p>
+            <p className="storage-path">{storageInfo?.database}</p>
+            <p>
+              自动备份：
+              <span className="storage-path">{storageInfo?.backups}</span>
+            </p>
+            {storagePending ? (
+              <>
+                <p>已完整迁移，原位置保留。请重启使用新工作区。</p>
+                <button onClick={() => run(() => bridge.invoke('restart'))}>
+                  重启应用
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  disabled={busy}
+                  onClick={() =>
+                    run(async () => {
+                      manualSave();
+                      setBusy(true);
+                      try {
+                        const result = await bridge.invoke('changeStorage');
+                        if (result) {
+                          setStoragePending(true);
+                          setStorageInfo({
+                            database: `${result.folder}/workspace.sqlite`,
+                            backups: `${result.folder}/backups`,
+                          });
+                        } else setBusy(false);
+                      } catch (e) {
+                        setBusy(false);
+                        throw e;
+                      }
+                    })
+                  }
+                >
+                  更改工作区位置
+                </button>
+                <button disabled={busy} onClick={() => setStorageDialog(false)}>
+                  关闭
+                </button>
+              </>
+            )}
           </section>
         </div>
       )}

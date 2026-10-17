@@ -3,6 +3,8 @@ const { join } = require('node:path');
 const { pathToFileURL } = require('node:url');
 const fs = require('node:fs');
 const { Store, payload } = require('./store.cjs');
+const { backup: backupDatabase } = require('node:sqlite');
+const { isAbsolute } = require('node:path');
 let win, store;
 app.setName('Local Canvas');
 app.setPath(
@@ -18,8 +20,23 @@ else {
   app
     .whenReady()
     .then(() => {
-      store = new Store(join(app.getPath('userData'), 'workspace.sqlite'));
-      const backupDir = join(app.getPath('userData'), 'backups');
+      const locationFile = join(
+        app.getPath('userData'),
+        'storage-location.json',
+      );
+      let storageRoot = app.getPath('userData');
+      if (fs.existsSync(locationFile)) {
+        const location = JSON.parse(fs.readFileSync(locationFile, 'utf8')).path;
+        if (
+          typeof location !== 'string' ||
+          !isAbsolute(location) ||
+          !fs.existsSync(join(location, 'workspace.sqlite'))
+        )
+          throw new Error('自定义工作区不可用，请连接对应磁盘后重启');
+        storageRoot = location;
+      }
+      store = new Store(join(storageRoot, 'workspace.sqlite'));
+      const backupDir = join(storageRoot, 'backups');
       fs.mkdirSync(backupDir, { recursive: true });
       const snapshot = join(
         backupDir,
@@ -53,6 +70,36 @@ else {
         trash: (...args) => store.trash(...args),
         getSetting: (key) => store.getSetting(key),
         setSetting: (...args) => store.setSetting(...args),
+        storageInfo: () => ({
+          folder: storageRoot,
+          database: join(storageRoot, 'workspace.sqlite'),
+          backups: backupDir,
+        }),
+        async changeStorage() {
+          const result = await dialog.showOpenDialog(win, {
+            title: '选择工作区保存文件夹（迁移后需重启）',
+            properties: ['openDirectory', 'createDirectory'],
+          });
+          if (result.canceled) return null;
+          const target = join(result.filePaths[0], 'Local Canvas');
+          if (fs.existsSync(target) && fs.readdirSync(target).length)
+            throw new Error('目标 Local Canvas 文件夹非空，请选择其他位置');
+          fs.mkdirSync(target, { recursive: true });
+          await backupDatabase(store.db, join(target, 'workspace.sqlite'));
+          fs.cpSync(backupDir, join(target, 'backups'), {
+            recursive: true,
+            force: false,
+            errorOnExist: true,
+          });
+          const temporary = `${locationFile}.tmp`;
+          fs.writeFileSync(temporary, JSON.stringify({ path: target }));
+          fs.renameSync(temporary, locationFile);
+          return { folder: target };
+        },
+        restart: () => {
+          app.relaunch();
+          app.quit();
+        },
         async exportGraphic(title, format, value) {
           if (
             !['png', 'svg'].includes(format) ||
