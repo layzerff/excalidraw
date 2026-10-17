@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760" role="img" aria-labelledby="title desc">
+  <title id="title">全屏演示方案示意：尚未实现</title>
+  <desc id="desc">计划中的全屏场景展示，底部包含左右箭头、页码、临时画笔、清除及退出按钮；画笔菜单可选择颜色和粗细。</desc>
+  <rect width="1280" height="760" fill="#f4f5ef"/>
+  <g font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,sans-serif">
+    <text x="48" y="55" fill="#234f43" font-size="25" font-weight="700">Local Canvas · 全屏演示方案</text>
+    <rect x="929" y="26" width="302" height="41" rx="20" fill="#fff0d1"/>
+    <text x="953" y="53" fill="#815c16" font-size="18">计划中 / 示意图，非实机截图</text>
+    <rect x="48" y="91" width="1184" height="594" rx="18" fill="#fff" stroke="#ced9ce"/>
+    <text x="101" y="151" fill="#61796c" font-size="15">按场景顺序展示 · 隐藏编辑侧栏</text>
+    <text x="101" y="224" fill="#263c32" font-size="36" font-weight="600">场景 02：方案讨论</text>
+    <rect x="111" y="283" width="243" height="131" rx="14" fill="#e9f1eb" stroke="#789584" stroke-width="2"/>
+    <text x="176" y="359" fill="#385244" font-size="25">设计目标</text>
+    <path d="M 365 349 H 451 M 438 337 L 452 349 L 438 361" fill="none" stroke="#72877b" stroke-width="3"/>
+    <rect x="466" y="283" width="243" height="131" rx="14" fill="#e9f1eb" stroke="#789584" stroke-width="2"/>
+    <text x="531" y="359" fill="#385244" font-size="25">方案比较</text>
+    <path d="M 720 349 H 806 M 793 337 L 807 349 L 793 361" fill="none" stroke="#72877b" stroke-width="3"/>
+    <rect x="822" y="283" width="243" height="131" rx="14" fill="#e9f1eb" stroke="#789584" stroke-width="2"/>
+    <text x="886" y="359" fill="#385244" font-size="25">下一步</text>
+    <path d="M 478 431 C 532 464 651 458 700 432 M 840 431 C 913 454 995 451 1046 430" fill="none" stroke="#df6260" stroke-linecap="round" stroke-width="5"/>
+    <text x="110" y="505" fill="#9c5a51" font-size="16">红色笔迹：临时批注（建议翻页或退出时清除）</text>
+    <rect x="729" y="468" width="294" height="106" rx="12" fill="#fff" stroke="#c8d5c9" stroke-width="2"/>
+    <text x="747" y="494" fill="#64786b" font-size="14">画笔颜色与粗细 · 参考内置菜单</text>
+    <circle cx="760" cy="519" r="10" fill="#df6260"/><circle cx="793" cy="519" r="10" fill="#3272c3"/><circle cx="826" cy="519" r="10" fill="#345d48"/><circle cx="859" cy="519" r="10" fill="#252a2b"/>
+    <path d="M 900 519 H 920" stroke="#252a2b" stroke-width="2"/><path d="M 936 519 H 956" stroke="#252a2b" stroke-width="5"/><path d="M 972 519 H 992" stroke="#252a2b" stroke-width="8"/>
+    <text x="747" y="552" fill="#64786b" font-size="13">颜色与线宽均可调整，允许连续绘制多笔</text>
+    <rect x="272" y="593" width="736" height="61" rx="18" fill="#244e41"/>
+    <text x="298" y="632" fill="#fff" font-size="21">← 上一场景</text>
+    <text x="453" y="632" fill="#d3e5d8" font-size="18">02 / 05</text>
+    <text x="555" y="632" fill="#fff" font-size="21">下一场景 →</text>
+    <line x1="718" y1="608" x2="718" y2="639" stroke="#67877a"/>
+    <text x="739" y="632" fill="#fff" font-size="20">临时画笔</text>
+    <text x="852" y="632" fill="#fff" font-size="18">清除</text>
+    <text x="921" y="632" fill="#fff" font-size="18">退出</text>
+    <text x="48" y="728" fill="#687b6c" font-size="17">需求 N09–N11 · 已记录，待开发；笔迹生命周期属于建议默认值，最终以实际实现与验收为准。</text>
+  </g>
+</svg>
