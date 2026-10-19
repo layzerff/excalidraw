@@ -1,5 +1,15 @@
 # Milestone validation — 2026-10-17
 
+## 0.2.0 — 2026-10-20
+
+- Production build and all 9 storage/navigation unit tests passed.
+- Actual macOS arm64 packaged app passed the complete Electron regression: native drawing/undo/redo, scene selection/reordering, fullscreen layers/autoplay/native ink, export/import, backup/restore, closing and restart.
+- New UI assertions passed: no top-level new-board button; root/folder context creation; folder icon and larger/bolder label; move menu; real file drag into a folder and back to root; keyboard sidebar resize; Save As file association; file-info path; manual write-back; external-change refusal preserving original bytes; system-picker reopening; migration and restart.
+- Fast synthetic input during macOS fullscreen transitions produced intermittent scene-drag/ink-undo failures in preliminary runs. The packaged regression waits for the native fullscreen transition and new editor history baseline, and uses stepped real mouse input for scene drags. No claim is made that every transition-time race is resolved.
+- macOS package version is 0.2.0; deep/strict ad-hoc signature verification passed. No Apple Developer ID notarization.
+- Windows x64 NSIS installer and portable EXE built at 0.2.0; both outer archive integrity tests passed. Windows runtime remains unverified and no Authenticode certificate is configured.
+- Real packaged screenshots updated under `docs/local-canvas/`; latest file-tree image is `files-current.png`.
+
 Base: official Excalidraw fork `layzerff/excalidraw`, upstream commit `4c37956ba5f04ec342a9d9d5891a38f22c5b7b4e`. Implementation branch: `codex/local-canvas-p0`.
 
 Validated on macOS Apple Silicon with Node 26.8.1, Electron 44.9.0 (Node 24.22.0, SQLite 3.53.4), React 18.3.1, official Excalidraw 0.18.1.
