@@ -2,6 +2,8 @@ const { app, BrowserWindow, ipcMain, dialog, session } = require('electron');
 const { join } = require('node:path');
 const { pathToFileURL } = require('node:url');
 const fs = require('node:fs');
+const { createHash } = require('node:crypto');
+const { basename } = require('node:path');
 const { Store, payload } = require('./store.cjs');
 const { backup: backupDatabase } = require('node:sqlite');
 const { isAbsolute } = require('node:path');
@@ -36,6 +38,8 @@ else {
         storageRoot = location;
       }
       store = new Store(join(storageRoot, 'workspace.sqlite'));
+      const getLink = (id) =>
+        JSON.parse(store.getSetting(`documentFile:${id}`) || 'null');
       const backupDir = join(storageRoot, 'backups');
       fs.mkdirSync(backupDir, { recursive: true });
       const snapshot = join(
@@ -63,13 +67,101 @@ else {
       };
       const operations = {
         list: () => store.list(),
-        read: (id) => store.read(id),
+        read: (id) => ({
+          ...store.read(id),
+          fileLink: getLink(id),
+        }),
         create: (...args) => store.create(...args),
         rename: (...args) => store.rename(...args),
         move: (...args) => store.move(...args),
         trash: (...args) => store.trash(...args),
-        getSetting: (key) => store.getSetting(key),
-        setSetting: (...args) => store.setSetting(...args),
+        getSetting: (key) =>
+          ['sidebarWidths', 'collapsedFolders'].includes(key)
+            ? JSON.parse(store.getSetting(key) || 'null')
+            : store.getSetting(key),
+        setSetting: (key, value) => {
+          if (key.startsWith('documentFile:'))
+            throw new Error('文件关联只能通过系统文件窗口设置');
+          return store.setSetting(
+            key,
+            ['sidebarWidths', 'collapsedFolders'].includes(key)
+              ? JSON.stringify(value)
+              : value,
+          );
+        },
+        fileInfo: (id) => ({
+          file: getLink(id)?.path || null,
+          database: join(storageRoot, 'workspace.sqlite'),
+        }),
+        async openDocument(parent) {
+          const result = await dialog.showOpenDialog(win, {
+            title: '打开白板文件',
+            properties: ['openFile'],
+            filters: [{ name: '白板文件', extensions: ['json', 'excalidraw'] }],
+          });
+          if (result.canceled) return null;
+          const path = result.filePaths[0];
+          if (fs.statSync(path).size > 100 * 1024 * 1024)
+            throw new Error('文件超过 100 MB');
+          const bytes = fs.readFileSync(path),
+            hash = digest(bytes),
+            value = JSON.parse(bytes);
+          const native = value.type === 'excalidraw';
+          const data = native
+            ? {
+                elements: value.elements,
+                appState: value.appState || {},
+                files: value.files || {},
+                scenes: value.localCanvas?.scenes || [],
+                libraryItems: value.localCanvas?.libraryItems || [],
+              }
+            : value.format === 'local-canvas-document' && value.version === 1
+              ? value.data
+              : null;
+          payload(data);
+          const existing = store
+            .list()
+            .find(
+              (node) =>
+                !node.deleted &&
+                node.kind === 'document' &&
+                getLink(node.id)?.path === path &&
+                getLink(node.id)?.hash === hash,
+            );
+          if (existing) return existing.id;
+          const id = store.create(
+            'document',
+            parent,
+            value.title ||
+              basename(path).replace(/\.(canvas\.json|excalidraw|json)$/i, ''),
+            data,
+          );
+          store.setSetting(
+            `documentFile:${id}`,
+            JSON.stringify({ path, hash, native }),
+          );
+          return id;
+        },
+        async saveAsDocument(id, data) {
+          payload(data);
+          const node = store.node(id);
+          const result = await dialog.showSaveDialog(win, {
+            title: '另存为白板文件',
+            defaultPath: `${node.title.replace(/[\\/:*?"<>|]/g, '_')}.canvas.json`,
+            filters: [
+              { name: 'Local Canvas 完整白板', extensions: ['json'] },
+              { name: 'Excalidraw 白板', extensions: ['excalidraw'] },
+            ],
+          });
+          if (result.canceled) return null;
+          const link = {
+            path: result.filePath,
+            native: result.filePath.endsWith('.excalidraw'),
+          };
+          link.hash = writeLinked(link, node.title, data);
+          store.setSetting(`documentFile:${id}`, JSON.stringify(link));
+          return link;
+        },
         storageInfo: () => ({
           folder: storageRoot,
           database: join(storageRoot, 'workspace.sqlite'),
@@ -276,6 +368,28 @@ else {
           event.returnValue = { error: error.message };
         }
       });
+      ipcMain.on('save-file', (event, id, data) => {
+        try {
+          trusted(event);
+          payload(data);
+          const node = store.node(id),
+            link = getLink(id);
+          if (link) {
+            if (
+              !fs.existsSync(link.path) ||
+              digest(fs.readFileSync(link.path)) !== link.hash
+            )
+              throw new Error(
+                '原文件已在外部修改或移动。本机副本已保存，请使用“另存为”以免覆盖外部内容。',
+              );
+            link.hash = writeLinked(link, node.title, data);
+            store.setSetting(`documentFile:${id}`, JSON.stringify(link));
+          }
+          event.returnValue = { linked: !!link };
+        } catch (error) {
+          event.returnValue = { error: error.message };
+        }
+      });
       // All editor assets are bundled; the desktop renderer cannot contact cloud services.
       session.defaultSession.webRequest.onBeforeRequest((details, callback) =>
         callback({ cancel: /^https?:|^wss?:/.test(details.url) }),
@@ -334,6 +448,42 @@ async function saveFile(value, defaultPath) {
     throw e;
   }
   return true;
+}
+function digest(bytes) {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+function writeLinked(link, title, data) {
+  const value = link.native
+    ? {
+        type: 'excalidraw',
+        version: 2,
+        source: 'local-canvas',
+        elements: data.elements,
+        appState: data.appState,
+        files: data.files,
+        localCanvas: {
+          version: 1,
+          scenes: data.scenes,
+          libraryItems: data.libraryItems || [],
+        },
+      }
+    : { format: 'local-canvas-document', version: 1, title, data };
+  const bytes = JSON.stringify(value),
+    temporary = `${link.path}.${process.pid}.tmp`;
+  const fd = fs.openSync(temporary, 'wx');
+  try {
+    fs.writeFileSync(fd, bytes);
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  try {
+    fs.renameSync(temporary, link.path);
+  } catch (error) {
+    fs.unlinkSync(temporary);
+    throw error;
+  }
+  return digest(bytes);
 }
 async function openFile() {
   const { canceled, filePaths } = await dialog.showOpenDialog(win, {

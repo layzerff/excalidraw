@@ -86,3 +86,9 @@ macOS development builds now receive an ad-hoc integrity signature before archiv
 Retain the repository root MIT `LICENSE` and `dist/EXCALIDRAW-LICENSE.txt`. `npm run build` generates and includes `THIRD-PARTY-NOTICES.md` from installed locked production dependencies. Fonts ship with their upstream license assets; Electron carries its own MIT and Chromium third-party notices. Packages that do not ship root license files are identified in the report and require a source-level license review before public distribution. No paid Excalidraw+ code or service is used.
 
 Official references: https://docs.excalidraw.com/docs/@excalidraw/excalidraw/api/props/excalidraw-api and https://github.com/excalidraw/excalidraw/blob/master/LICENSE.
+
+## Desktop 0.2.0 — file workflow
+
+Right-click the workspace root or an existing folder to create boards/folders. Folder names are larger/bolder; the chevron collapses children. Row context menus stay at the click location, and drag-and-drop moves items into folders or back to the root. Logical workspace moves do not move external files.
+
+Open File uses the native picker and retains the source association. Save As chooses and associates a new standalone file; manual Save/Cmd+S writes contents and viewport back to that file. Automatic content saves remain in SQLite for local recovery and do not silently modify external files. If the associated file changes externally, manual saving refuses to overwrite it; Save As resolves the conflict. File Info beside the title shows the path, rather than permanently displaying it in the sidebar. File associations are local settings, not imported with workspace backups.

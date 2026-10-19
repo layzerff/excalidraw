@@ -46,6 +46,17 @@ async function exportClick(page, name) {
   await page.getByRole('button', { name, exact: true }).click();
   await page.getByRole('button', { name: '关闭导出', exact: true }).click();
 }
+async function dragScene(page, source, target, bottom = false) {
+  const from = await source.boundingBox(),
+    to = await target.boundingBox();
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.x + 60, to.y + (bottom ? to.height - 3 : 2), {
+    steps: 15,
+  });
+  await page.waitForTimeout(100);
+  await page.mouse.up();
+}
 try {
   let page = await launch();
   console.log(
@@ -68,16 +79,15 @@ try {
     return result;
   });
   expect(fonts).toEqual({ Excalifont: true, Virgil: true, Xiaolai: true });
-  const newBoardBox = await page
-    .getByRole('button', { name: '＋ 白板', exact: true })
-    .boundingBox();
+  await expect(
+    page.getByRole('button', { name: '＋ 白板', exact: true }),
+  ).toHaveCount(0);
   const saveBox = await page
     .getByRole('button', { name: '保存', exact: true })
     .boundingBox();
   const saveAsBox = await page
     .getByRole('button', { name: '另存为', exact: true })
     .boundingBox();
-  expect(saveBox.y).toBeGreaterThan(newBoardBox.y + newBoardBox.height);
   expect(saveAsBox.y).toBe(saveBox.y);
   await expect(
     page
@@ -112,20 +122,18 @@ try {
   await page.getByLabel('场景标题', { exact: true }).fill('取消的名字');
   await page.getByLabel('场景标题', { exact: true }).press('Escape');
   await expect(page.locator('.scene').first()).toContainText('局部细节');
-  const lastSceneBounds = await page.locator('.scene').last().boundingBox();
-  await page
-    .locator('.drag-handle')
-    .first()
-    .dragTo(page.locator('.scene').last(), {
-      targetPosition: { x: 60, y: lastSceneBounds.height - 3 },
-    });
+  await dragScene(
+    page,
+    page.locator('.drag-handle').first(),
+    page.locator('.scene').last(),
+    true,
+  );
   await expect(page.locator('.scene').last()).toContainText('局部细节');
-  await page
-    .locator('.drag-handle')
-    .last()
-    .dragTo(page.locator('.scene').first(), {
-      targetPosition: { x: 60, y: 2 },
-    });
+  await dragScene(
+    page,
+    page.locator('.drag-handle').last(),
+    page.locator('.scene').first(),
+  );
   await expect(page.locator('.scene').first()).toContainText('局部细节');
   // Exercise the upstream rectangle tool and native undo/redo using real pointer input.
   await page.locator('.canvas').click({ position: { x: 80, y: 150 } });
@@ -222,6 +230,7 @@ try {
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await page.getByRole('button', { name: '▶ 演示', exact: true }).click();
   await expect(page.locator('.presentation-controls')).toBeVisible();
+  await page.waitForTimeout(1200); // macOS native fullscreen transition.
   await expect(page.locator('.presentation-controls')).toContainText('1 / 2');
   await page.getByRole('button', { name: '图层', exact: true }).click();
   await expect(page.locator('.scenes')).toBeVisible();
@@ -230,20 +239,18 @@ try {
   await page.getByLabel('场景标题', { exact: true }).press('Enter');
   await page.getByRole('button', { name: '图层', exact: true }).click();
   await page.getByRole('button', { name: '图层', exact: true }).click();
-  const layerLast = await page.locator('.scene').last().boundingBox();
-  await page
-    .locator('.drag-handle')
-    .first()
-    .dragTo(page.locator('.scene').last(), {
-      targetPosition: { x: 60, y: layerLast.height - 3 },
-    });
+  await dragScene(
+    page,
+    page.locator('.drag-handle').first(),
+    page.locator('.scene').last(),
+    true,
+  );
   await expect(page.locator('.scene').last()).toContainText('局部细节');
-  await page
-    .locator('.drag-handle')
-    .last()
-    .dragTo(page.locator('.scene').first(), {
-      targetPosition: { x: 60, y: 2 },
-    });
+  await dragScene(
+    page,
+    page.locator('.drag-handle').last(),
+    page.locator('.scene').first(),
+  );
   await expect(page.locator('.scene').first()).toContainText('局部细节');
   await page.screenshot({ path: 'test-results/layers-current.png' });
   await page.getByRole('button', { name: '图层', exact: true }).click();
@@ -260,6 +267,8 @@ try {
     page.getByRole('button', { name: '自动演示', exact: true }),
   ).toBeVisible();
   await page.getByRole('button', { name: '上一场景', exact: true }).click();
+  // Wait for the page transition and the new native editor's history baseline.
+  await page.waitForTimeout(650);
   await page.getByRole('button', { name: '临时画笔', exact: true }).click();
   await page.mouse.move(400, 300);
   await page.mouse.down();
@@ -362,7 +371,8 @@ try {
     })
     .toBe('%PDF-');
   copyFileSync(pdf, 'test-results/scenes.pdf');
-  await page.getByRole('button', { name: '＋ 白板', exact: true }).click();
+  await page.locator('.root').click({ button: 'right' });
+  await page.getByRole('menuitem', { name: '新建白板', exact: true }).click();
   await page.locator('.modal input').fill('第二张白板');
   await page.getByRole('button', { name: '确定', exact: true }).click();
   await expect(page.locator('header strong')).toHaveText('第二张白板');
@@ -402,6 +412,7 @@ try {
   await app.evaluate(({ dialog }, filePath) => {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath });
   }, backup);
+  await page.locator('.workspace-tools summary').click();
   await page.getByRole('button', { name: '备份工作区', exact: true }).click();
   await expect
     .poll(() => {
@@ -447,7 +458,8 @@ try {
     1,
   );
   expect(errors).toEqual([]);
-  await page.getByRole('button', { name: '＋ 白板', exact: true }).click();
+  await page.locator('.root').click({ button: 'right' });
+  await page.getByRole('menuitem', { name: '新建白板', exact: true }).click();
   await page.locator('.modal input').fill('字体与场景演示');
   await page.getByRole('button', { name: '确定', exact: true }).click();
   await expect(page.locator('header select')).toHaveCount(0);
@@ -559,6 +571,88 @@ try {
       }
     })
     .toBe(2);
+  await page.getByRole('button', { name: '文件信息', exact: true }).click();
+  await expect(page.locator('.modal')).toContainText(saveAs);
+  await page
+    .locator('.modal')
+    .getByRole('button', { name: '关闭', exact: true })
+    .click();
+  const sourceBefore = readFileSync(saveAs, 'utf8');
+  writeFileSync(saveAs, `${sourceBefore}\n`);
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('原文件已在外部修改');
+  expect(readFileSync(saveAs, 'utf8')).toBe(`${sourceBefore}\n`);
+  writeFileSync(saveAs, sourceBefore);
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.locator('.save-state')).toHaveText('已保存到原文件');
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [filePath],
+    });
+  }, saveAs);
+  await page.getByRole('button', { name: '打开文件…', exact: true }).click();
+  await expect(page.locator('.scene')).toHaveCount(2);
+  await page.locator('.root').click({ button: 'right' });
+  await page.getByRole('menuitem', { name: '新建文件夹', exact: true }).click();
+  await page.locator('.modal input').fill('项目资料');
+  await page.getByRole('button', { name: '确定', exact: true }).click();
+  const project = page.locator('.folder-row').filter({ hasText: '项目资料' });
+  await expect(project.locator('.folder-icon')).toBeVisible();
+  expect(
+    await project
+      .locator('.node-title')
+      .evaluate((el) => getComputedStyle(el).fontWeight),
+  ).toBe('650');
+  await project.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: '新建白板', exact: true }).click();
+  await page.locator('.modal input').fill('文件管理回归');
+  await page.getByRole('button', { name: '确定', exact: true }).click();
+  const managed = page.locator('.tree-row').filter({ hasText: '文件管理回归' });
+  await expect(managed).toBeVisible();
+  await managed.click({ button: 'right' });
+  await page
+    .getByRole('combobox', { name: '移动到文件夹', exact: true })
+    .selectOption('');
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await managed.dragTo(project);
+  await expect
+    .poll(async () =>
+      page.evaluate(async () => {
+        const nodes = await window.workspace.invoke('list');
+        return (
+          nodes.find((n) => n.title === '文件管理回归').parent ===
+          nodes.find((n) => n.title === '项目资料').id
+        );
+      }),
+    )
+    .toBe(true);
+  await managed.dragTo(page.locator('.root'));
+  await expect
+    .poll(async () =>
+      page.evaluate(
+        async () =>
+          (await window.workspace.invoke('list')).find(
+            (n) => n.title === '文件管理回归',
+          ).parent,
+      ),
+    )
+    .toBe(null);
+  const separator = page.getByRole('separator', {
+    name: '左侧栏宽度',
+    exact: true,
+  });
+  await separator.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(separator).toHaveAttribute('aria-valuenow', '250');
+  await separator.press('ArrowLeft');
+  await page
+    .locator('.node-title')
+    .filter({ hasText: '字体与场景演示' })
+    .click();
+  await expect(page.locator('.scene')).toHaveCount(2);
+  await page.screenshot({ path: 'test-results/files-current.png' });
   const relocated = join(profile, 'relocated');
   mkdirSync(relocated);
   await app.evaluate(({ dialog }, folder) => {
@@ -567,6 +661,10 @@ try {
       filePaths: [folder],
     });
   }, relocated);
+  if (!(await page.locator('.workspace-tools').getAttribute('open')))
+    await page.locator('.workspace-tools').evaluate((element) => {
+      element.open = true;
+    });
   await page.getByRole('button', { name: '保存位置', exact: true }).click();
   await expect(page.locator('.storage-path').first()).toContainText(profile);
   await page
@@ -584,6 +682,9 @@ try {
       (e) => e.type === 'text' && !e.isDeleted,
     ),
   ).toHaveLength(1);
+  await page.locator('.workspace-tools').evaluate((element) => {
+    element.open = true;
+  });
   await page.getByRole('button', { name: '保存位置', exact: true }).click();
   await expect(page.locator('.storage-path').first()).toContainText(relocated);
   await page.getByRole('button', { name: '关闭', exact: true }).click();

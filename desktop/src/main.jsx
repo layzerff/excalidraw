@@ -91,6 +91,29 @@ function PanelIcon() {
     </svg>
   );
 }
+function FolderIcon({ open }) {
+  return (
+    <svg
+      className="folder-icon"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path
+        d={
+          open
+            ? 'M3 7V5h7l2 2h9v3H6L3 20V7Zm0 13 3-10h17l-3 10H3Z'
+            : 'M3 20V5h7l2 2h9v13H3Z'
+        }
+        fill="#dce9df"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 function App() {
   const [nodes, setNodes] = useState([]),
     [doc, setDoc] = useState(null),
@@ -115,6 +138,14 @@ function App() {
   const [storageInfo, setStorageInfo] = useState(null);
   const [storageDialog, setStorageDialog] = useState(false);
   const [storagePending, setStoragePending] = useState(false);
+  const [fileMenu, setFileMenu] = useState(null);
+  const [fileInfo, setFileInfo] = useState(null);
+  const [collapsedFolders, setCollapsedFolders] = useState([]);
+  const [dropFolder, setDropFolder] = useState(undefined);
+  const [widths, setWidths] = useState({ left: 240, right: 230 });
+  const fileDrag = useRef(null),
+    resizeDrag = useRef(null),
+    widthRef = useRef(widths);
   const [currentScene, setCurrentScene] = useState(null);
   const [pen, setPen] = useState(false);
   const [inkCount, setInkCount] = useState(0);
@@ -209,7 +240,7 @@ function App() {
       } catch {}
     }, 500);
   };
-  const manualSave = () => {
+  const manualSave = (writeFile = true) => {
     if (
       !api.current ||
       !active.current ||
@@ -242,6 +273,8 @@ function App() {
       },
     });
     flush();
+    if (writeFile && bridge.saveFile(active.current.id, active.current.data))
+      setStatus('已保存到原文件');
   };
   const switchDoc = async (id) => {
     if (busy) return;
@@ -281,6 +314,21 @@ function App() {
     run(async () => {
       const list = await refresh();
       setStorageInfo(await bridge.invoke('storageInfo'));
+      const savedWidths = await bridge.invoke('getSetting', 'sidebarWidths');
+      if (
+        savedWidths &&
+        Number.isFinite(savedWidths.left) &&
+        Number.isFinite(savedWidths.right)
+      ) {
+        const next = {
+          left: Math.min(460, Math.max(220, savedWidths.left)),
+          right: Math.min(420, Math.max(200, savedWidths.right)),
+        };
+        widthRef.current = next;
+        setWidths(next);
+      }
+      const collapsed = await bridge.invoke('getSetting', 'collapsedFolders');
+      if (Array.isArray(collapsed)) setCollapsedFolders(collapsed);
       const saved = await bridge.invoke('getSetting', 'activeDocument');
       setSidebar((await bridge.invoke('getSetting', 'sceneSidebar')) !== false);
       const id =
@@ -308,6 +356,7 @@ function App() {
       if (e.key === 'Escape') {
         setExportMenu(false);
         setSceneMenu(null);
+        setFileMenu(null);
         stop();
         setSelecting(null);
         setSelection(null);
@@ -584,10 +633,10 @@ function App() {
   };
   const ask = (title, value, submit, options) =>
     setForm({ title, value, submit, options });
-  const create = (kind) =>
+  const create = (kind, parent = folder) =>
     ask(kind === 'folder' ? '新建文件夹' : '新建白板', '', async (title) => {
       flush();
-      const id = await bridge.invoke('create', kind, folder, title);
+      const id = await bridge.invoke('create', kind, parent, title);
       await refresh();
       if (kind === 'document') await switchDoc(id);
     });
@@ -606,15 +655,157 @@ function App() {
         ),
       ],
     );
+  const openFileMenu = (event, node = null) => {
+    event.preventDefault();
+    setFileMenu({
+      node,
+      x: Math.min(event.clientX, ownerWindow.innerWidth - 230),
+      y: Math.min(event.clientY, ownerWindow.innerHeight - 290),
+    });
+  };
+  const moveNode = async (id, parent) => {
+    flush();
+    await bridge.invoke('move', id, parent);
+    setCollapsedFolders((ids) => ids.filter((value) => value !== parent));
+    await refresh();
+  };
+  const folderPath = (node) => {
+    const titles = [node.title];
+    let parent = node.parent;
+    while (parent) {
+      const ancestor = nodes.find((item) => item.id === parent);
+      if (!ancestor) break;
+      titles.unshift(ancestor.title);
+      parent = ancestor.parent;
+    }
+    return titles.join(' / ');
+  };
+  const canMoveTo = (node, target) => {
+    let current = target;
+    while (current) {
+      if (current.id === node.id) return false;
+      current = nodes.find((item) => item.id === current.parent);
+    }
+    return true;
+  };
+  const dropOn = (event, parent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const id = fileDrag.current;
+    fileDrag.current = null;
+    setDropFolder(undefined);
+    if (id && id !== parent) run(() => moveNode(id, parent));
+  };
+  const resizeHandle = (side) => (
+    <div
+      className={`sidebar-resizer ${side}`}
+      role="separator"
+      aria-label={side === 'left' ? '左侧栏宽度' : '右侧栏宽度'}
+      aria-orientation="vertical"
+      aria-valuenow={widths[side]}
+      tabIndex={0}
+      onPointerDown={(event) => {
+        event.currentTarget.setPointerCapture(event.pointerId);
+        resizeDrag.current = {
+          x: event.clientX,
+          width: widthRef.current[side],
+        };
+      }}
+      onPointerMove={(event) => {
+        if (!resizeDrag.current) return;
+        const value = Math.max(
+          side === 'left' ? 220 : 200,
+          Math.min(
+            side === 'left' ? 460 : 420,
+            resizeDrag.current.width +
+              (event.clientX - resizeDrag.current.x) *
+                (side === 'left' ? 1 : -1),
+          ),
+        );
+        widthRef.current = { ...widthRef.current, [side]: value };
+        setWidths(widthRef.current);
+      }}
+      onPointerUp={() => {
+        resizeDrag.current = null;
+        run(() =>
+          bridge.invoke('setSetting', 'sidebarWidths', widthRef.current),
+        );
+      }}
+      onLostPointerCapture={() => {
+        resizeDrag.current = null;
+      }}
+      onKeyDown={(event) => {
+        if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+        event.preventDefault();
+        const direction =
+          (event.key === 'ArrowRight' ? 1 : -1) * (side === 'left' ? 1 : -1);
+        const value = Math.max(
+          side === 'left' ? 220 : 200,
+          Math.min(
+            side === 'left' ? 460 : 420,
+            widthRef.current[side] + direction * 10,
+          ),
+        );
+        widthRef.current = { ...widthRef.current, [side]: value };
+        setWidths(widthRef.current);
+        run(() =>
+          bridge.invoke('setSetting', 'sidebarWidths', widthRef.current),
+        );
+      }}
+    />
+  );
   const tree = (parent = null, depth = 0) =>
     nodes
       .filter((n) => n.parent === parent && !n.deleted)
       .map((n) => (
         <React.Fragment key={n.id}>
           <div
-            className={`tree-row ${doc?.id === n.id ? 'active' : ''} ${folder === n.id ? 'folder-selected' : ''}`}
+            className={`tree-row ${n.kind === 'folder' ? 'folder-row' : ''} ${doc?.id === n.id ? 'active' : ''} ${folder === n.id ? 'folder-selected' : ''} ${dropFolder === n.id ? 'drop-target' : ''}`}
             style={{ paddingLeft: 8 + depth * 15 }}
+            onContextMenu={(event) => openFileMenu(event, n)}
+            draggable={!busy}
+            onDragStart={(event) => {
+              fileDrag.current = n.id;
+              event.dataTransfer.setData('text/plain', n.id);
+              event.dataTransfer.effectAllowed = 'move';
+            }}
+            onDragEnd={() => {
+              fileDrag.current = null;
+              setDropFolder(undefined);
+            }}
+            onDragOver={(event) => {
+              if (fileDrag.current && n.kind === 'folder') {
+                event.preventDefault();
+                setDropFolder(n.id);
+              }
+            }}
+            onDrop={(event) => {
+              if (n.kind === 'folder') dropOn(event, n.id);
+            }}
           >
+            {n.kind === 'folder' && (
+              <button
+                className="folder-toggle"
+                aria-label={`${collapsedFolders.includes(n.id) ? '展开' : '收起'} ${n.title}`}
+                aria-expanded={!collapsedFolders.includes(n.id)}
+                disabled={
+                  !nodes.some(
+                    (child) => child.parent === n.id && !child.deleted,
+                  )
+                }
+                onClick={() => {
+                  const next = collapsedFolders.includes(n.id)
+                    ? collapsedFolders.filter((id) => id !== n.id)
+                    : [...collapsedFolders, n.id];
+                  setCollapsedFolders(next);
+                  run(() =>
+                    bridge.invoke('setSetting', 'collapsedFolders', next),
+                  );
+                }}
+              >
+                {collapsedFolders.includes(n.id) ? '▸' : '▾'}
+              </button>
+            )}
             <button
               className="node-title"
               disabled={busy}
@@ -624,17 +815,24 @@ function App() {
                 )
               }
             >
-              {n.kind === 'folder' ? '▾' : '▧'} {n.title}
+              {n.kind === 'folder' ? (
+                <FolderIcon open={!collapsedFolders.includes(n.id)} />
+              ) : (
+                '▧'
+              )}{' '}
+              {n.title}
             </button>
             <button
               title="操作"
               aria-label={`${n.title} 操作`}
-              onClick={() => setForm({ title: n.title, node: n })}
+              onClick={(event) => openFileMenu(event, n)}
             >
               ···
             </button>
           </div>
-          {n.kind === 'folder' && tree(n.id, depth + 1)}
+          {n.kind === 'folder' &&
+            !collapsedFolders.includes(n.id) &&
+            tree(n.id, depth + 1)}
         </React.Fragment>
       ));
   const remove = async (node) => {
@@ -652,20 +850,23 @@ function App() {
   return (
     <div
       className={`workspace ${!sidebar ? 'sidebar-hidden' : ''} ${presenting ? 'presenting' : ''} ${layers ? 'show-layers' : ''}`}
+      style={{
+        '--files-width': `${widths.left}px`,
+        '--scenes-width': `${widths.right}px`,
+      }}
     >
       <aside className="files">
+        {resizeHandle('left')}
         <div className="brand">
           <span className="logo">▧</span>
           <div>
-            Local Canvas<small>本地无限画布</small>
+            Local Canvas<small>本地无限画布 · v0.2.0</small>
           </div>
         </div>
         <div className="section-title">
           工作区 <span>离线 · 本机</span>
         </div>
         <div className="actions">
-          <button onClick={() => create('document')}>＋ 白板</button>
-          <button onClick={() => create('folder')}>＋ 文件夹</button>
           <button
             className="workspace-save"
             title="保存内容与当前视图（Cmd/Ctrl+S）"
@@ -677,14 +878,14 @@ function App() {
           <button
             disabled={!doc || busy}
             onClick={() =>
-              run(() => {
-                manualSave();
-                return bridge.invoke(
-                  'exportDocument',
+              run(async () => {
+                manualSave(false);
+                const link = await bridge.invoke(
+                  'saveAsDocument',
                   doc.id,
                   active.current.data,
-                  false,
                 );
+                if (link) setStatus('已另存为文件');
               })
             }
           >
@@ -692,55 +893,91 @@ function App() {
           </button>
         </div>
         <button
-          className={`root ${folder === null ? 'selected' : ''}`}
+          className="open-document"
+          onClick={() =>
+            run(async () => {
+              flush();
+              const id = await bridge.invoke('openDocument', folder);
+              await refresh();
+              if (id) await switchDoc(id);
+            })
+          }
+        >
+          打开文件…
+        </button>
+        <button
+          className={`root ${folder === null ? 'selected' : ''} ${dropFolder === null ? 'drop-target' : ''}`}
           onClick={() => setFolder(null)}
+          onContextMenu={(event) => openFileMenu(event)}
+          onDragOver={(event) => {
+            if (fileDrag.current) {
+              event.preventDefault();
+              setDropFolder(null);
+            }
+          }}
+          onDrop={(event) => dropOn(event, null)}
+          title="右键新建白板或文件夹；拖入此处移回根目录"
         >
           ⌂ 根目录
         </button>
         <div className="tree">{tree()}</div>
-        <div className="file-tools">
-          <button onClick={() => setStorageDialog(true)}>保存位置</button>
-          <button
-            onClick={() =>
-              run(async () => {
-                flush();
-                const id = await bridge.invoke('importDocument', folder);
-                await refresh();
-                if (id) await switchDoc(id);
-              })
-            }
-          >
-            导入文档
-          </button>
-          <button onClick={() => setTrash(!trash)}>回收站</button>
-          <button
-            onClick={() =>
-              run(async () => {
-                flush();
-                await bridge.invoke('backup');
-              })
-            }
-          >
-            备份工作区
-          </button>
-          <button
-            onClick={() =>
-              run(async () => {
-                flush();
-                await bridge.invoke('restore');
-                await refresh();
-              })
-            }
-          >
-            恢复备份
-          </button>
-        </div>
-        <small className="hint">备份包含图片与场景。恢复会导入新文件夹。</small>
+        <details className="workspace-tools">
+          <summary>工作区管理</summary>
+          <div className="file-tools">
+            <button onClick={() => setStorageDialog(true)}>保存位置</button>
+            <button
+              onClick={() =>
+                run(async () => {
+                  flush();
+                  const id = await bridge.invoke('importDocument', folder);
+                  await refresh();
+                  if (id) await switchDoc(id);
+                })
+              }
+            >
+              导入文档
+            </button>
+            <button onClick={() => setTrash(!trash)}>回收站</button>
+            <button
+              onClick={() =>
+                run(async () => {
+                  flush();
+                  await bridge.invoke('backup');
+                })
+              }
+            >
+              备份工作区
+            </button>
+            <button
+              onClick={() =>
+                run(async () => {
+                  flush();
+                  await bridge.invoke('restore');
+                  await refresh();
+                })
+              }
+            >
+              恢复备份
+            </button>
+          </div>
+        </details>
       </aside>
       <main>
         <header>
           <div>
             <strong>{doc?.title || '选择或创建一张白板'}</strong>
+            {doc && (
+              <button
+                className="file-info-button"
+                onClick={() =>
+                  run(async () =>
+                    setFileInfo(await bridge.invoke('fileInfo', doc.id)),
+                  )
+                }
+              >
+                文件信息
+              </button>
+            )}
             <span className="save-state">{status}</span>
           </div>
         </header>
@@ -877,6 +1114,7 @@ function App() {
         </div>
       </main>
       <aside className="scenes">
+        {!presenting && resizeHandle('right')}
         <div className="section-title">场景</div>
         <p className="hint">为同一张白板保存不同区域，点击场景平滑导航。</p>
         <div className="scene-create">
@@ -1349,6 +1587,142 @@ function App() {
             <button onClick={() => run(exitPresentation)}>退出演示</button>
           </div>
         </>
+      )}
+      {fileMenu && (
+        <div
+          className="file-menu-backdrop"
+          onPointerDown={() => setFileMenu(null)}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            setFileMenu(null);
+          }}
+        >
+          <section
+            className="file-menu"
+            role="menu"
+            style={{
+              left: Math.max(8, fileMenu.x),
+              top: Math.max(8, fileMenu.y),
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <small>{fileMenu.node?.title || '根目录'}</small>
+            {(!fileMenu.node || fileMenu.node.kind === 'folder') && (
+              <>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    create('document', fileMenu.node?.id || null);
+                    setFileMenu(null);
+                  }}
+                >
+                  新建白板
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    create('folder', fileMenu.node?.id || null);
+                    setFileMenu(null);
+                  }}
+                >
+                  新建文件夹
+                </button>
+              </>
+            )}
+            {fileMenu.node && (
+              <>
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const title = new ownerWindow.FormData(event.currentTarget)
+                      .get('title')
+                      .trim();
+                    if (title)
+                      run(async () => {
+                        await bridge.invoke('rename', fileMenu.node.id, title);
+                        await refresh();
+                        if (doc?.id === fileMenu.node.id)
+                          setDoc({ ...doc, title });
+                        setFileMenu(null);
+                      });
+                  }}
+                >
+                  <label>
+                    重命名
+                    <input
+                      name="title"
+                      aria-label="文件名称"
+                      defaultValue={fileMenu.node.title}
+                      maxLength={200}
+                    />
+                  </label>
+                  <button type="submit">确定</button>
+                </form>
+                <label>
+                  移动到
+                  <select
+                    aria-label="移动到文件夹"
+                    value={fileMenu.node.parent || ''}
+                    onChange={(event) => {
+                      const parent = event.target.value || null;
+                      run(async () => {
+                        await moveNode(fileMenu.node.id, parent);
+                        setFileMenu(null);
+                      });
+                    }}
+                  >
+                    <option value="">根目录</option>
+                    {nodes
+                      .filter(
+                        (n) =>
+                          n.kind === 'folder' &&
+                          !n.deleted &&
+                          canMoveTo(fileMenu.node, n),
+                      )
+                      .map((n) => (
+                        <option key={n.id} value={n.id}>
+                          {folderPath(n)}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <button
+                  role="menuitem"
+                  onClick={() =>
+                    run(async () => {
+                      await remove(fileMenu.node);
+                      setFileMenu(null);
+                    })
+                  }
+                >
+                  移入回收站
+                </button>
+              </>
+            )}
+          </section>
+        </div>
+      )}
+      {fileInfo && (
+        <div className="modal-backdrop">
+          <section className="modal">
+            <h2>文件信息</h2>
+            <p>
+              文件位置：
+              <span className="storage-path">
+                {fileInfo.file ||
+                  '尚未另存为独立文件，请使用“另存为”选择位置。'}
+              </span>
+            </p>
+            <p>
+              内容自动保存到本机工作区；手动保存同时记录当前视图，并写回已关联的文件。
+            </p>
+            <p>
+              本机恢复副本：
+              <span className="storage-path">{fileInfo.database}</span>
+            </p>
+            <button onClick={() => setFileInfo(null)}>关闭</button>
+          </section>
+        </div>
       )}
       {trash && (
         <div className="modal-backdrop">
