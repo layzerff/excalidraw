@@ -1,5 +1,13 @@
 # Milestone validation — 2026-10-17
 
+## 0.2.2 — 2026-10-25
+
+- Production build and all 11 unit/resource checks passed.
+- Actual Mac arm64 packaged application passed `workspace.e2e.mjs`: loop off by default, wrap from last page to first while still playing, turning loop off stops at the last page, restart remembers the toggle without starting playback; read-only mode prevents real pointer drag and Delete from modifying native elements; transparent alpha at all four logo corners; larger SVG home/chevrons; existing nested-directory, ancestor-highlight, uniform-font and restart checks.
+- Actual Mac packaged application also passed the full `desktop.e2e.mjs` regression on this iteration: native drawing and undo/redo, scene selection/order and animation, fullscreen layers/autoplay/native ink, graphic/PDF/document export and import, file links/conflict refusal, backup/restore, migration, close-time flush and restart. Earlier versions' intermittent native-ink undo failures remain historical observations; this is a passing run, not evidence that their underlying cause was fixed.
+- Windows main EXE, NSIS installer and portable launcher contain the exact custom 256px PNG from the ICO; outer archive integrity checks passed. Mac ICNS matches the source and deep/strict ad-hoc signing passed. Windows runtime remains unverified; no Windows Authenticode or Apple notarization.
+- Native tool-lock semantics were verified directly in the installed official Excalidraw 0.18.1 `LockButton` and Chinese locale: “绘制后保持所选的工具栏状态”. Independent read-only browsing uses official `viewModeEnabled`, not mass changes to element `locked` values.
+
 ## 0.2.1 — 2026-10-25
 
 - Production build and 11 unit/resource tests passed (9 storage/navigation checks plus ICO/ICNS structure and sizes).
