@@ -1,5 +1,13 @@
 # Milestone validation — 2026-10-17
 
+## 0.2.1 — 2026-10-25
+
+- Production build and 11 unit/resource tests passed (9 storage/navigation checks plus ICO/ICNS structure and sizes).
+- `tests/workspace.e2e.mjs` passed on the actual macOS arm64 packaged application: two ancestor folders highlighted on launch, unrelated-folder click followed by reopening the active file, switching documents across branches, 28px indentation and two guide lines, moving the active document and restarting, uniform 14px controls/layers, and the loaded custom logo. Captured `workspace-021.png` and `presentation-021.png` from the running app.
+- Windows main EXE, NSIS installer and portable launcher each contain the exact 256px PNG from the committed custom ICO. Mac bundled `icon.icns` is byte-identical to the committed ICNS. Both Windows executable archives passed integrity checks; Windows runtime and shell icon cache behavior remain unverified.
+- Mac deep/strict ad-hoc signing passed; no Apple notarization or Windows Authenticode certificate.
+- The broader `desktop.e2e.mjs` run stopped at the previously observed native presentation-ink undo assertion on two attempts. Earlier drawing, navigation, layers and uniform-control-font checks passed, but the full suite is **not green** in this iteration. This does not replace a complete regression pass; keep the ink-history issue open.
+
 ## 0.2.0 — 2026-10-20
 
 - Production build and all 9 storage/navigation unit tests passed.

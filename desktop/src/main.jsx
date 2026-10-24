@@ -280,6 +280,7 @@ function App() {
     if (busy) return;
     if (active.current?.id === id && api.current) {
       flush();
+      setFolder(nodes.find((node) => node.id === id)?.parent || null);
       return;
     }
     setBusy(true);
@@ -298,6 +299,7 @@ function App() {
       dirty.current = false;
       setScenes(next.data.scenes);
       setDoc(next);
+      setFolder(next.parent || null);
       setStatus('已保存到本机');
       await bridge.invoke('setSetting', 'activeDocument', id);
     } finally {
@@ -754,14 +756,21 @@ function App() {
       }}
     />
   );
+  const activeAncestors = new Set();
+  let ancestor = nodes.find((node) => node.id === doc?.id)?.parent;
+  while (ancestor && !activeAncestors.has(ancestor)) {
+    activeAncestors.add(ancestor);
+    ancestor = nodes.find((node) => node.id === ancestor)?.parent;
+  }
   const tree = (parent = null, depth = 0) =>
     nodes
       .filter((n) => n.parent === parent && !n.deleted)
       .map((n) => (
         <React.Fragment key={n.id}>
           <div
-            className={`tree-row ${n.kind === 'folder' ? 'folder-row' : ''} ${doc?.id === n.id ? 'active' : ''} ${folder === n.id ? 'folder-selected' : ''} ${dropFolder === n.id ? 'drop-target' : ''}`}
-            style={{ paddingLeft: 8 + depth * 15 }}
+            className={`tree-row ${n.kind === 'folder' ? 'folder-row' : ''} ${doc?.id === n.id ? 'active' : ''} ${activeAncestors.has(n.id) ? 'folder-selected' : ''} ${dropFolder === n.id ? 'drop-target' : ''}`}
+            data-depth={depth}
+            style={{ paddingLeft: 8 + depth * 28 }}
             onContextMenu={(event) => openFileMenu(event, n)}
             draggable={!busy}
             onDragStart={(event) => {
@@ -783,6 +792,17 @@ function App() {
               if (n.kind === 'folder') dropOn(event, n.id);
             }}
           >
+            {Array.from({ length: depth }, (_, level) => (
+              <span
+                key={level}
+                className="tree-guide"
+                style={{ left: 21 + level * 28 }}
+                aria-hidden="true"
+              />
+            ))}
+            {n.kind !== 'folder' && (
+              <span className="tree-toggle-spacer" aria-hidden="true" />
+            )}
             {n.kind === 'folder' && (
               <button
                 className="folder-toggle"
@@ -858,9 +878,9 @@ function App() {
       <aside className="files">
         {resizeHandle('left')}
         <div className="brand">
-          <span className="logo">▧</span>
+          <img className="logo" src="./app-icon.png" alt="Canvas 标志" />
           <div>
-            Local Canvas<small>本地无限画布 · v0.2.0</small>
+            Local Canvas<small>本地无限画布 · v0.2.1</small>
           </div>
         </div>
         <div className="section-title">

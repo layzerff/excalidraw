@@ -230,6 +230,15 @@ try {
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await page.getByRole('button', { name: '▶ 演示', exact: true }).click();
   await expect(page.locator('.presentation-controls')).toBeVisible();
+  expect(
+    await page
+      .locator('.presentation-controls')
+      .evaluate((panel) =>
+        [...panel.querySelectorAll('button, label, select, span')].every(
+          (node) => getComputedStyle(node).fontSize === '14px',
+        ),
+      ),
+  ).toBe(true);
   await page.waitForTimeout(1200); // macOS native fullscreen transition.
   await expect(page.locator('.presentation-controls')).toContainText('1 / 2');
   await page.getByRole('button', { name: '图层', exact: true }).click();
@@ -606,16 +615,37 @@ try {
       .evaluate((el) => getComputedStyle(el).fontWeight),
   ).toBe('650');
   await project.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: '新建文件夹', exact: true }).click();
+  await page.locator('.modal input').fill('子资料');
+  await page.getByRole('button', { name: '确定', exact: true }).click();
+  const subfolder = page.locator('.folder-row').filter({ hasText: '子资料' });
+  await subfolder.click({ button: 'right' });
   await page.getByRole('menuitem', { name: '新建白板', exact: true }).click();
   await page.locator('.modal input').fill('文件管理回归');
   await page.getByRole('button', { name: '确定', exact: true }).click();
   const managed = page.locator('.tree-row').filter({ hasText: '文件管理回归' });
   await expect(managed).toBeVisible();
+  await expect(page.locator('.folder-selected')).toHaveCount(2);
+  const unrelated = page
+    .locator('.folder-row')
+    .filter({ hasText: '恢复 ' })
+    .first();
+  await unrelated.locator('.node-title').click();
+  await managed.locator('.node-title').click();
+  await expect(project).toHaveClass(/folder-selected/);
+  await expect(subfolder).toHaveClass(/folder-selected/);
+  await expect(unrelated).not.toHaveClass(/folder-selected/);
+  await expect(managed).toHaveAttribute('data-depth', '2');
+  expect(
+    await managed.evaluate((node) => getComputedStyle(node).paddingLeft),
+  ).toBe('64px');
+  await expect(managed.locator('.tree-guide')).toHaveCount(2);
   await managed.click({ button: 'right' });
   await page
     .getByRole('combobox', { name: '移动到文件夹', exact: true })
     .selectOption('');
   await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(page.locator('.folder-selected')).toHaveCount(0);
   await managed.dragTo(project);
   await expect
     .poll(async () =>
@@ -652,6 +682,20 @@ try {
     .filter({ hasText: '字体与场景演示' })
     .click();
   await expect(page.locator('.scene')).toHaveCount(2);
+  const displayRow = page
+    .locator('.tree-row')
+    .filter({ hasText: '字体与场景演示' });
+  await displayRow.click({ button: 'right' });
+  await page
+    .getByRole('combobox', { name: '移动到文件夹', exact: true })
+    .selectOption({ label: '项目资料 / 子资料' });
+  await expect(page.locator('.folder-selected')).toHaveCount(2);
+  expect(
+    await page
+      .locator('.logo')
+      .evaluate((image) => image.complete && image.naturalWidth === 1024),
+  ).toBe(true);
+  await expect(page.locator('.save-state')).toContainText('已保存');
   await page.screenshot({ path: 'test-results/files-current.png' });
   const relocated = join(profile, 'relocated');
   mkdirSync(relocated);

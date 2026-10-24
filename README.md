@@ -24,11 +24,13 @@
 
 ## 编辑与场景管理
 
-当前桌面版本：**0.2.0**。左侧保留文件树、保存/另存为、打开文件；备份、恢复及工作区迁移折叠在“工作区管理”。
+当前桌面版本：**0.2.1**。文件树使用清晰缩进与层级引导线，当前文档及全部上级文件夹联动高亮；演示面板统一字号。界面、macOS 应用、Windows 安装与免安装版使用同一款 Canvas 网格手写 Logo。
 
-![Local Canvas 0.2.0 实机文件树：文件夹图标、就地操作与简化工作区](docs/local-canvas/files-current.png)
+<img src="docs/local-canvas/logo.png" width="128" alt="Canvas 网格手写 Logo：加粗深青色圆角边框" />
 
-![Local Canvas 实机界面：本地文件树、原生画布及紧凑场景列表](docs/local-canvas/desktop-current.png)
+![Local Canvas 0.2.1 实机文件树：清晰层级缩进、当前文件的全部父目录高亮和新 Logo](docs/local-canvas/files-current.png)
+
+[演示面板统一字号实机截图](docs/local-canvas/presentation-fonts.png)
 
 ## 全屏演示
 
@@ -36,9 +38,9 @@
 
 临时画笔允许连续书写多笔，翻页及退出时清除；不写入文档、备份或 PDF。编辑和备份仍使用完整文档或 `.excalidraw` 格式。
 
-![演示图层面板：排序与右键场景操作，底部可选自动演示及移动时长](docs/local-canvas/layers-current.png)
+![0.2.1 演示图层面板：底部移动与停留时间及各面板使用统一字号](docs/local-canvas/presentation-fonts.png)
 
-自动演示每页停留可选 1、2、3、5、10、15、30 秒（默认 3 秒），与移动时长分别设置，到最后一页停止；打开图层面板或启用临时画笔时暂停自动播放。工作区第一行是“＋白板、＋文件夹”，第二行固定为“保存、另存为”。
+自动演示每页停留可选 1、2、3、5、10、15、30 秒（默认 3 秒），与移动时长分别设置，到最后一页停止；打开图层面板或启用临时画笔时暂停自动播放。工作区保留“保存、另存为”和“打开文件”，新建操作放在根目录/文件夹的右键菜单。
 
 ## 区域导出
 

@@ -405,6 +405,7 @@ else {
           minWidth: 1000,
           minHeight: 650,
           backgroundColor: '#f5f4f1',
+          icon: join(__dirname, '../dist/app-icon.png'),
           webPreferences: {
             preload: join(__dirname, 'preload.cjs'),
             nodeIntegration: false,

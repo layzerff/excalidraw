@@ -1,6 +1,6 @@
 {
   "name": "local-canvas-desktop",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "packageManager": "npm@12.0.2",
   "type": "module",
@@ -51,6 +51,7 @@
       "output": "release"
     },
     "mac": {
+      "icon": "build/app-icon.icns",
       "identity": null,
       "target": [
         "dmg",
@@ -59,6 +60,7 @@
       "category": "public.app-category.productivity"
     },
     "win": {
+      "icon": "build/app-icon.ico",
       "target": [
         "nsis",
         "portable"
