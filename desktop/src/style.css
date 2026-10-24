@@ -117,6 +117,9 @@ select:focus-visible {
   vertical-align: top;
 }
 .root {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-top: 24px;
   border: 0;
   background: transparent;
@@ -175,6 +178,9 @@ select:focus-visible {
   gap: 6px;
 }
 .tree-row .folder-toggle {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
   flex: 0 0 28px;
   height: 30px;
   font-size: 17px;

@@ -90,7 +90,69 @@ try {
       .locator('.logo')
       .evaluate((image) => image.complete && image.naturalWidth === 1024),
   ).toBe(true);
+  expect(
+    await page.locator('.logo').evaluate((image) => {
+      const canvas = image.ownerDocument.createElement('canvas');
+      canvas.width = image.naturalWidth;
+      canvas.height = image.naturalHeight;
+      const context = canvas.getContext('2d');
+      context.drawImage(image, 0, 0);
+      return [
+        [0, 0],
+        [canvas.width - 1, 0],
+        [0, canvas.height - 1],
+        [canvas.width - 1, canvas.height - 1],
+      ].map(([x, y]) => context.getImageData(x, y, 1, 1).data[3]);
+    }),
+  ).toEqual([0, 0, 0, 0]);
   mkdirSync('test-results', { recursive: true });
+  await expect(page.locator('.root svg path')).toHaveAttribute(
+    'stroke-width',
+    '2.5',
+  );
+  await expect(
+    row('项目设计').locator('.folder-toggle svg path'),
+  ).toHaveAttribute('stroke-width', '3');
+  await page
+    .locator('label')
+    .filter({ has: page.locator('[data-testid="toolbar-rectangle"]') })
+    .click();
+  const canvas = await page.locator('.canvas').boundingBox();
+  await page.mouse.move(canvas.x + 250, canvas.y + 250);
+  await page.mouse.down();
+  await page.mouse.move(canvas.x + 430, canvas.y + 360, { steps: 10 });
+  await page.mouse.up();
+  const documentData = () =>
+    page.evaluate(async () => {
+      const b = window.workspace;
+      return (
+        await b.invoke('read', await b.invoke('getSetting', 'activeDocument'))
+      ).data;
+    });
+  await expect
+    .poll(
+      async () =>
+        (await documentData()).elements.filter((element) => !element.isDeleted)
+          .length,
+    )
+    .toBe(1);
+  const original = (await documentData()).elements;
+  await page.getByRole('button', { name: '画布只读', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: '解除只读', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await page.screenshot({ path: 'test-results/readonly-current.png' });
+  await page.mouse.move(canvas.x + 300, canvas.y + 300);
+  await page.mouse.down();
+  await page.mouse.move(canvas.x + 500, canvas.y + 400, { steps: 10 });
+  await page.mouse.up();
+  await page.keyboard.press('Delete');
+  await page.waitForTimeout(650);
+  expect((await documentData()).elements).toEqual(original);
+  await page.getByRole('button', { name: '解除只读', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: '画布只读', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'false');
   await page.screenshot({ path: 'test-results/workspace-021.png' });
   await page.getByRole('button', { name: '▶ 演示', exact: true }).click();
   await expect(page.locator('.presentation-controls')).toBeVisible();
@@ -117,6 +179,30 @@ try {
       ),
   ).toBe(true);
   await page.screenshot({ path: 'test-results/presentation-021.png' });
+  await page.getByRole('button', { name: '图层', exact: true }).click();
+  const loop = page.getByRole('button', { name: '循环演示', exact: true });
+  await expect(loop).toHaveAttribute('aria-pressed', 'false');
+  await loop.click();
+  await page.screenshot({ path: 'test-results/presentation-loop.png' });
+  await page.getByLabel('自动演示停留时间').selectOption('1000');
+  await page.getByRole('button', { name: '自动演示', exact: true }).click();
+  await expect(page.locator('.presentation-controls')).toContainText('2 / 2', {
+    timeout: 6000,
+  });
+  await expect(page.locator('.presentation-controls')).toContainText('1 / 2', {
+    timeout: 6000,
+  });
+  await expect(
+    page.getByRole('button', { name: '暂停自动演示', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await loop.click();
+  await expect(page.locator('.presentation-controls')).toContainText('2 / 2', {
+    timeout: 6000,
+  });
+  await expect(
+    page.getByRole('button', { name: '自动演示', exact: true }),
+  ).toBeVisible();
+  await loop.click(); // Persist the preference, not the playing state.
   await page.getByRole('button', { name: '退出演示', exact: true }).click();
   await expect(page.locator('.presentation-controls')).toHaveCount(0);
   await row('产品方案').click({ button: 'right' });
@@ -131,9 +217,16 @@ try {
   page = await launch();
   await expect(page.locator('.folder-selected')).toHaveCount(1);
   await expect(page.locator('.folder-selected')).toContainText('参考资料');
+  await page.getByRole('button', { name: '▶ 演示', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: '循环演示', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(
+    page.getByRole('button', { name: '自动演示', exact: true }),
+  ).toBeVisible();
   expect(errors).toEqual([]);
   console.log(
-    'PASS: ancestor highlighting, stale-folder regression, nested indentation/guides, active-document move/restart, uniform presentation panel fonts, custom logo',
+    'PASS: ancestor highlighting, indentation/guides, move/restart, uniform fonts, transparent logo corners, read-only drag/delete protection, automatic loop wrap/stop and persisted preference',
   );
 } finally {
   if (app) await app.close();

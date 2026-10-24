@@ -115,6 +115,8 @@ function FolderIcon({ open }) {
   );
 }
 function App() {
+  const [loopPresentation, setLoopPresentation] = useState(false);
+  const [readOnly, setReadOnly] = useState(false);
   const [nodes, setNodes] = useState([]),
     [doc, setDoc] = useState(null),
     [folder, setFolder] = useState(null);
@@ -299,6 +301,7 @@ function App() {
       dirty.current = false;
       setScenes(next.data.scenes);
       setDoc(next);
+      setReadOnly(false);
       setFolder(next.parent || null);
       setStatus('已保存到本机');
       await bridge.invoke('setSetting', 'activeDocument', id);
@@ -314,6 +317,9 @@ function App() {
       return;
     }
     run(async () => {
+      setLoopPresentation(
+        (await bridge.invoke('getSetting', 'loopPresentation')) === 'true',
+      );
       const list = await refresh();
       setStorageInfo(await bridge.invoke('storageInfo'));
       const savedWidths = await bridge.invoke('getSetting', 'sidebarWidths');
@@ -514,12 +520,15 @@ function App() {
   useEffect(() => {
     if (!presenting || !autoPlay || !presentationReady) return;
     const index = scenes.findIndex((s) => s.id === currentScene);
-    if (index >= scenes.length - 1) {
+    if (index >= scenes.length - 1 && !loopPresentation) {
       setAutoPlay(false);
       return;
     }
     const timer = ownerWindow.setTimeout(
-      () => latest.current.step(1),
+      () =>
+        index >= scenes.length - 1
+          ? navigate(scenes[0])
+          : latest.current.step(1),
       duration + dwellTime,
     );
     return () => ownerWindow.clearTimeout(timer);
@@ -531,6 +540,7 @@ function App() {
     duration,
     dwellTime,
     scenes,
+    loopPresentation,
   ]);
   useEffect(() => {
     if (presenting && pen)
@@ -823,7 +833,25 @@ function App() {
                   );
                 }}
               >
-                {collapsedFolders.includes(n.id) ? '▸' : '▾'}
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    d={
+                      collapsedFolders.includes(n.id)
+                        ? 'm9 5 7 7-7 7'
+                        : 'm5 9 7 7 7-7'
+                    }
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
               </button>
             )}
             <button
@@ -880,7 +908,7 @@ function App() {
         <div className="brand">
           <img className="logo" src="./app-icon.png" alt="Canvas 标志" />
           <div>
-            Local Canvas<small>本地无限画布 · v0.2.1</small>
+            Local Canvas<small>本地无限画布 · v0.2.2</small>
           </div>
         </div>
         <div className="section-title">
@@ -938,7 +966,16 @@ function App() {
           onDrop={(event) => dropOn(event, null)}
           title="右键新建白板或文件夹；拖入此处移回根目录"
         >
-          ⌂ 根目录
+          <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="m3 10 9-7 9 7v11h-6v-7H9v7H3V10Z"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinejoin="round"
+            />
+          </svg>{' '}
+          根目录
         </button>
         <div className="tree">{tree()}</div>
         <details className="workspace-tools">
@@ -998,6 +1035,20 @@ function App() {
                 文件信息
               </button>
             )}
+            {doc && (
+              <button
+                className="file-info-button"
+                disabled={!editorReady || presenting}
+                aria-pressed={readOnly}
+                title="画布只读：禁止移动、编辑和删除全部元素；仍可平移缩放"
+                onClick={() => {
+                  stop();
+                  setReadOnly(!readOnly);
+                }}
+              >
+                {readOnly ? '解除只读' : '画布只读'}
+              </button>
+            )}
             <span className="save-state">{status}</span>
           </div>
         </header>
@@ -1020,7 +1071,7 @@ function App() {
               key={`${doc.id}:${editorEpoch}`}
               langCode="zh-CN"
               showDeprecatedFonts
-              viewModeEnabled={presenting}
+              viewModeEnabled={presenting || readOnly}
               excalidrawAPI={(value) => {
                 api.current = value;
                 setEditorReady(true);
@@ -1537,6 +1588,20 @@ function App() {
               }}
             >
               {autoPlay ? '暂停自动演示' : '自动演示'}
+            </button>
+            <button
+              aria-label="循环演示"
+              aria-pressed={loopPresentation}
+              title="开启后自动演示到末页会返回首页继续播放"
+              onClick={() => {
+                const next = !loopPresentation;
+                setLoopPresentation(next);
+                run(() =>
+                  bridge.invoke('setSetting', 'loopPresentation', String(next)),
+                );
+              }}
+            >
+              循环{loopPresentation ? '：开' : '：关'}
             </button>
             <label>
               移动{' '}
