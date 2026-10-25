@@ -1,5 +1,24 @@
 # Milestone validation — 2026-10-17
 
+## 0.4.1 — release validation, 2026-10-25
+
+- Production build and all 18 unit/resource checks passed, including linked-scene range/binding/geometry updates, backup round-trip, malformed binding rejection and transactional trash purge of nodes/revisions/link settings.
+- Final Mac arm64 packaged app passed all five suites, sequentially: `linked-scenes.e2e.mjs`, `local-update.e2e.mjs`, `appearance.e2e.mjs`, `workspace.e2e.mjs`, and the complete `desktop.e2e.mjs`.
+- Actual native grouping, pointer dragging, undo/redo, deletion and undo-deletion updated linked scene bounds correctly. Linked IDs survived restart. Unit checks cover new group members, missing content and backup restoration. Geometry uses the official getCommonBounds API (including rotated content); there is no claim of exhaustive rotation/complex-bound-text coverage.
+- Trash UI verified cancellation without deletion, confirmation and restart persistence. Only internal trashed records, revisions and file-link settings are purged; associated files and existing backups are untouched. Nested deleted folders are detached before transactional deletion to preserve foreign-key integrity.
+- Layout checks verify Region and Selected Elements on the same row, Current View below; all four themes retain subdued directory highlights to the right of guide lines without the inset crescent, and hidden-sidebar corner controls remain separated across 1000/1200/1440px widths.
+- Earlier local 0.4.1 checks for fit-all without autosave, Shift scene deletion confirmation, large single/two-page PDF output and temporary-file cleanup remain green. The complete suite also passed native drawing and ink undo/redo, scene ordering/fullscreen/autoplay, imports/exports, external file conflict protection, backup/restore, storage migration and restart. Prior intermittent ink/fullscreen-drag failures are historical observations; this passing run does not establish their root cause was fixed.
+- Mac ad-hoc signing and Windows x64 cross-builds complete; Windows runtime, Authenticode signing and Apple notarization remain unverified/unconfigured. README contains product features and real current screenshots; history and test details stay in dedicated documents.
+
+## 0.4.1 — earlier local-only validation, 2026-10-25
+
+- Production build and 15 unit/resource checks passed. New scene-range checks cover forward/reverse ranges, reordered scenes and missing anchors. ICO/ICNS structure, Mac visible bounds and transparent corners are checked.
+- Actual Mac arm64 packaged `local-update.e2e.mjs` passed: double-middle-click fits two distant rectangles entirely within the viewport without creating an autosave revision; manual Save then verifies the resulting viewport. Shift selection, cancellation, confirmed batch deletion and unchanged drawing elements were checked in both editing and fullscreen; deleting the last presentation scenes exits presentation and survives restart.
+- Large-image PDF regression passed with an image data URL over 4,000,000 characters: single and two-page outputs have valid PDF headers; pdfinfo confirms one/two landscape A4 pages. Invalid-image export fails without creating an output file and removes its temporary directory. The fix uses local PNG/HTML files, waits for image decoding and cleans up the print window/files.
+- Actual packaged appearance checks cover four themes, 1000/1200/1440px window widths, hidden-right-sidebar corner spacing and actual export-menu clicks. Tree highlight pseudo-element begins to the right of the deepest indentation guide and has no inset/crescent marker in every theme. Theme preferences and independent sidebar restart checks continue to pass.
+- Packaged workspace regression passed ancestor highlighting, moves/restart, context forms, indentation, transparent logo corners, read-only editing protection, automatic loop wrap/stop and preferences.
+- Mac/Windows packages are local delivery only. No 0.4.1 GitHub Release, tag or software asset upload is authorized. Only CHANGELOG.md and NEXT-ITERATION.md are synchronized as requested. No Windows runtime or distribution signing/notarization; earlier full-suite temporary-ink undo/fullscreen-drag intermittence is not claimed fixed.
+
 ## 0.4.0 — 2026-10-25
 
 - Production build and all 15 unit/resource checks passed. New checks cover four complete theme definitions, safe preference fallback, readable text contrast and center-preserving 100% zoom.

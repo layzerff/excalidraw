@@ -175,13 +175,22 @@ select {
 }
 .tree-row {
   position: relative;
+  isolation: isolate;
   display: flex;
   align-items: center;
   border-radius: 6px;
   margin: 2px 0;
   min-height: 34px;
 }
-.tree-row:hover {
+.tree-row::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 0 var(--tree-highlight-start, 0px);
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: -1;
+}
+.tree-row:hover::before {
   background: var(--hover);
 }
 .tree-guide {
@@ -195,15 +204,11 @@ select {
   flex: 0 0 28px;
 }
 .folder-selected {
-  background: #eaf2fb;
   color: #0550ae;
-  box-shadow: inset 3px 0 #54aeff;
 }
 .tree-row.active,
 .tree-row.active:hover {
-  background: var(--selected);
   color: #0550ae;
-  box-shadow: inset 3px 0 var(--accent);
 }
 .tree-row button {
   background: transparent;
@@ -353,6 +358,14 @@ header strong {
 }
 .scene-create > button:first-child:hover {
   background: #1a7f37;
+}
+.scene-create .scene-current-view {
+  grid-column: 1 / -1;
+}
+.scene-binding {
+  font-size: 10px;
+  color: var(--muted);
+  flex-shrink: 0;
 }
 .scene-list {
   flex: 1;
@@ -528,7 +541,8 @@ header strong {
   display: none;
 }
 .sidebar-hidden header {
-  padding-right: 60px;
+  /* Both corner controls remain visible when the scenes column is hidden. */
+  padding-right: 112px;
 }
 .sidebar-resizer {
   position: absolute;
@@ -902,22 +916,21 @@ header strong {
   background: var(--selected);
 }
 .workspace .folder-selected {
-  background: var(--ancestor);
-  color: var(--strong);
-  box-shadow: inset 2px 0 var(--accent);
+  color: var(--text);
 }
-.workspace .tree-row.active {
-  box-shadow: inset 2px 0 var(--tree-marker);
+.workspace .tree-row.active::before {
+  box-shadow: none;
 }
 .workspace .tree-row.active,
 .workspace .tree-row.active:hover {
-  background: var(--tree-selected);
   color: var(--text);
 }
-.workspace .folder-selected {
+.workspace .tree-row.active::before,
+.workspace .tree-row.active:hover::before {
+  background: var(--tree-selected);
+}
+.workspace .folder-selected::before {
   background: var(--tree-ancestor);
-  color: var(--text);
-  box-shadow: none;
 }
 .workspace .selection-layer {
   background: color-mix(in srgb, var(--accent) 4%, transparent);
@@ -1014,8 +1027,9 @@ header strong {
   border-bottom-color: var(--border);
   border-radius: 0;
 }
-.workspace[data-theme='notion'] .tree-row.active {
-  box-shadow: none;
+.workspace .scene.scene-selected {
+  background: var(--tree-selected);
+  border-color: var(--tree-marker);
 }
 .workspace[data-theme='notion']
   :is(.file-menu, .export-menu, .scene-context-menu) {

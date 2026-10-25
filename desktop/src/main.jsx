@@ -8,10 +8,12 @@ import {
   viewportCoordsToSceneCoords,
   exportToBlob,
   exportToSvg,
+  getCommonBounds,
 } from '@excalidraw/excalidraw';
 import '@excalidraw/excalidraw/index.css';
 import './style.css';
-import { THEMES, themeId, themeStyle, resetZoomView } from './themes.mjs';
+import { THEMES, themeId, themeStyle } from './themes.mjs';
+import { sceneRange, selectedBinding, followScenes } from './scenes.mjs';
 import { ShellIcon, ThemePaletteIcon } from './ShellIcon.jsx';
 import {
   viewRect,
@@ -187,6 +189,10 @@ function App() {
   const [inkCount, setInkCount] = useState(0);
   const [editingScene, setEditingScene] = useState(null);
   const [sceneMenu, setSceneMenu] = useState(null);
+  const [selectedScenes, setSelectedScenes] = useState([]);
+  const sceneAnchor = useRef(null);
+  const [sceneDeletion, setSceneDeletion] = useState(null);
+  const [emptyTrashConfirm, setEmptyTrashConfirm] = useState(false);
   const [exportMenu, setExportMenu] = useState(false);
   const [exportRegion, setExportRegion] = useState(null);
   const [dropAt, setDropAt] = useState(null);
@@ -342,6 +348,10 @@ function App() {
       stop();
       setSelecting(null);
       setSelection(null);
+      setSelectedScenes([]);
+      sceneAnchor.current = null;
+      setSceneMenu(null);
+      setSceneDeletion(null);
       setExportMenu(false);
       setExportRegion(null);
       const next = await bridge.invoke('read', id);
@@ -494,12 +504,19 @@ function App() {
   }, []);
   const updateScenes = (next) => {
     setScenes(next);
+    setSelectedScenes((ids) =>
+      ids.filter((id) => next.some((scene) => scene.id === id)),
+    );
     changed({ ...active.current.data, scenes: next });
   };
   const addScene = (rect) => {
     if (selecting && selecting !== 'new')
       updateScenes(
-        scenes.map((s) => (s.id === selecting ? { ...s, rect } : s)),
+        scenes.map((s) => {
+          if (s.id !== selecting) return s;
+          const { binding, ...fixed } = s;
+          return { ...fixed, rect };
+        }),
       );
     else
       updateScenes([
@@ -552,6 +569,23 @@ function App() {
     };
     frame.current = ownerWindow.requestAnimationFrame(animate);
   };
+  const addElementScene = () => {
+    if (!api.current || !active.current) return;
+    const elements = api.current.getSceneElements();
+    const binding = selectedBinding(elements, api.current.getAppState());
+    if (!binding.elementIds.length) {
+      api.current.setActiveTool({ type: 'selection' });
+      setStatus('先在画布选中元素或组合，再点“选择元素”添加场景');
+      return;
+    }
+    const scene = {
+      id: ownerWindow.crypto.randomUUID(),
+      title: `元素场景 ${scenes.length + 1}`,
+      rect: { x: 0, y: 0, width: 1, height: 1 },
+      binding,
+    };
+    updateScenes(followScenes([...scenes, scene], elements, getCommonBounds));
+  };
   const exitPresentation = async () => {
     ownerWindow.clearTimeout(presentationTimer.current);
     stop();
@@ -579,6 +613,70 @@ function App() {
     const index = scenes.findIndex((s) => s.id === currentScene);
     const next = scenes[index + delta];
     if (next) navigate(next);
+  };
+  const selectScene = (scene, event) => {
+    if (event.shiftKey) {
+      setSelectedScenes(sceneRange(scenes, sceneAnchor.current, scene.id));
+      if (!sceneAnchor.current) sceneAnchor.current = scene.id;
+      return;
+    }
+    sceneAnchor.current = scene.id;
+    setSelectedScenes([scene.id]);
+    navigate(scene);
+  };
+  const fitOnMiddleDoubleClick = (event) => {
+    stop();
+    if (
+      event.button !== 1 ||
+      !api.current ||
+      event.target.closest(
+        'button,input,select,textarea,a,[role="menu"],.App-menu,.layer-ui__wrapper,.excalidraw-textEditorContainer',
+      )
+    )
+      return;
+    const now = ownerWindow.performance.now(),
+      previous = middleClick.current;
+    middleClick.current = { time: now, x: event.clientX, y: event.clientY };
+    if (
+      previous &&
+      now - previous.time < 400 &&
+      Math.hypot(event.clientX - previous.x, event.clientY - previous.y) < 8
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      middleClick.current = null;
+      setAutoPlay(false);
+      const elements = api.current.getSceneElements();
+      if (!elements.length) return;
+      const options = {
+        fitToViewport: true,
+        viewportZoomFactor: 0.85,
+        maxZoom: 1,
+        animate: false,
+      };
+      api.current.scrollToContent(elements, options);
+      inkApi.current?.scrollToContent(elements, options);
+    }
+  };
+  const confirmSceneDeletion = async () => {
+    if (!sceneDeletion || sceneDeletion.documentId !== active.current?.id)
+      return;
+    const index = scenes.findIndex((scene) => scene.id === currentScene);
+    const next = scenes.filter(
+      (scene) => !sceneDeletion.ids.includes(scene.id),
+    );
+    stop();
+    setAutoPlay(false);
+    updateScenes(next);
+    setSceneDeletion(null);
+    setSelectedScenes([]);
+    sceneAnchor.current = null;
+    if (presentation.current && !next.length) await exitPresentation();
+    else if (sceneDeletion.ids.includes(currentScene)) {
+      if (presentation.current)
+        navigate(next[Math.min(Math.max(index, 0), next.length - 1)]);
+      else setCurrentScene(null);
+    }
   };
   latest.current = { exitPresentation, step, manualSave, saveAs };
   useEffect(() => {
@@ -899,7 +997,10 @@ function App() {
           <div
             className={`tree-row ${n.kind === 'folder' ? 'folder-row' : ''} ${doc?.id === n.id ? 'active' : ''} ${activeAncestors.has(n.id) ? 'folder-selected' : ''} ${dropFolder === n.id ? 'drop-target' : ''}`}
             data-depth={depth}
-            style={{ paddingLeft: 8 + depth * 28 }}
+            style={{
+              paddingLeft: 8 + depth * 28,
+              '--tree-highlight-start': `${depth ? 22 + (depth - 1) * 28 : 0}px`,
+            }}
             onContextMenu={(event) => openFileMenu(event, n)}
             draggable={!busy}
             onDragStart={(event) => {
@@ -1017,7 +1118,7 @@ function App() {
         <div className="brand">
           <img className="logo" src="./app-icon.png" alt="Canvas 标志" />
           <div>
-            Local Canvas<small>本地无限画布 · v0.4.0</small>
+            Local Canvas<small>本地无限画布 · v0.4.1</small>
           </div>
         </div>
         <div className="section-title">
@@ -1184,46 +1285,7 @@ function App() {
         <div
           className="canvas"
           ref={stage}
-          onPointerDownCapture={(event) => {
-            stop();
-            if (
-              event.button !== 1 ||
-              !api.current ||
-              event.target.closest(
-                'button,input,select,textarea,a,[role="menu"],.App-menu,.layer-ui__wrapper,.excalidraw-textEditorContainer',
-              )
-            )
-              return;
-            const now = ownerWindow.performance.now(),
-              previous = middleClick.current;
-            middleClick.current = {
-              time: now,
-              x: event.clientX,
-              y: event.clientY,
-            };
-            if (
-              previous &&
-              now - previous.time < 400 &&
-              Math.hypot(
-                event.clientX - previous.x,
-                event.clientY - previous.y,
-              ) < 8
-            ) {
-              event.preventDefault();
-              event.stopPropagation();
-              middleClick.current = null;
-              setAutoPlay(false);
-              const view = resetZoomView(api.current.getAppState());
-              api.current.updateScene({
-                appState: view,
-                captureUpdate: CaptureUpdateAction.NEVER,
-              });
-              inkApi.current?.updateScene({
-                appState: view,
-                captureUpdate: CaptureUpdateAction.NEVER,
-              });
-            }
-          }}
+          onPointerDownCapture={fitOnMiddleDoubleClick}
           onWheelCapture={stop}
           onKeyDownCapture={stop}
         >
@@ -1271,8 +1333,14 @@ function App() {
                   elements: data.elements,
                   appState: data.appState,
                   files: data.files || files,
-                  scenes: active.current.data.scenes,
+                  scenes: followScenes(
+                    active.current.data.scenes,
+                    elements,
+                    getCommonBounds,
+                  ),
                 };
+                if (next.scenes !== active.current.data.scenes)
+                  setScenes(next.scenes);
                 if (
                   JSON.stringify(next) !== JSON.stringify(active.current.data)
                 )
@@ -1397,11 +1465,19 @@ function App() {
           </button>
           <button
             disabled={!doc}
+            onClick={() => run(addElementScene)}
+            title="先选中画布中的元素或组合，场景将跟随它们移动"
+          >
+            ＋ 选择元素
+          </button>
+          <button
+            className="scene-current-view"
+            disabled={!doc}
             onClick={() =>
               api.current && addScene(viewRect(api.current.getAppState()))
             }
           >
-            保存当前视图
+            添加当前视图为场景
           </button>
         </div>
         <div
@@ -1430,12 +1506,22 @@ function App() {
         >
           {scenes.map((s, i) => (
             <article
-              className={`scene ${dropAt === i ? 'drop-before' : ''} ${dropAt === i + 1 && i === scenes.length - 1 ? 'drop-after' : ''}`}
+              className={`scene ${selectedScenes.includes(s.id) ? 'scene-selected' : ''} ${dropAt === i ? 'drop-before' : ''} ${dropAt === i + 1 && i === scenes.length - 1 ? 'drop-after' : ''}`}
+              data-scene-id={s.id}
+              data-selected={selectedScenes.includes(s.id)}
               key={s.id}
               onContextMenu={(e) => {
                 e.preventDefault();
+                const ids = selectedScenes.includes(s.id)
+                  ? selectedScenes
+                  : [s.id];
+                if (!selectedScenes.includes(s.id)) {
+                  setSelectedScenes(ids);
+                  sceneAnchor.current = s.id;
+                }
                 setSceneMenu({
                   id: s.id,
+                  ids,
                   x: Math.min(e.clientX, ownerWindow.innerWidth - 170),
                   y: Math.min(e.clientY, ownerWindow.innerHeight - 200),
                 });
@@ -1509,7 +1595,8 @@ function App() {
                 <button
                   className="scene-target"
                   title={s.title}
-                  onClick={() => navigate(s)}
+                  onClick={(event) => selectScene(s, event)}
+                  aria-pressed={selectedScenes.includes(s.id)}
                   onDoubleClick={(e) => {
                     e.preventDefault();
                     stop();
@@ -1518,12 +1605,19 @@ function App() {
                 >
                   <span>{String(i + 1).padStart(2, '0')}</span>
                   <strong>{s.title}</strong>
+                  {s.binding && (
+                    <small className="scene-binding" title="跟随关联元素和组合">
+                      跟随
+                    </small>
+                  )}
                 </button>
               )}
             </article>
           ))}
         </div>
-        <small className="hint">拖拽排序 · 双击标题改名 · 右键更多操作。</small>
+        <small className="hint">
+          拖拽排序 · Shift 连选 · 双击改名 · 右键操作。
+        </small>
       </aside>
       {sceneMenu && (
         <div
@@ -1546,47 +1640,59 @@ function App() {
               }
             }}
           >
+            {sceneMenu.ids.length === 1 && (
+              <>
+                <button
+                  role="menuitem"
+                  autoFocus
+                  onClick={() => {
+                    setEditingScene(sceneMenu.id);
+                    setSceneMenu(null);
+                  }}
+                >
+                  改名
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    stop();
+                    setSelecting(sceneMenu.id);
+                    setSceneMenu(null);
+                  }}
+                >
+                  {scenes.find((scene) => scene.id === sceneMenu.id)?.binding
+                    ? '重框（解除跟随）'
+                    : '重框'}
+                </button>
+                <button
+                  role="menuitem"
+                  disabled={scenes[0]?.id === sceneMenu.id}
+                  onClick={() => {
+                    const next = [...scenes];
+                    const i = next.findIndex((s) => s.id === sceneMenu.id);
+                    [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                    updateScenes(next);
+                    setSceneMenu(null);
+                  }}
+                >
+                  上移
+                </button>
+              </>
+            )}
             <button
               role="menuitem"
-              autoFocus
-              onClick={() => {
-                setEditingScene(sceneMenu.id);
-                setSceneMenu(null);
-              }}
-            >
-              改名
-            </button>
-            <button
-              role="menuitem"
+              className="danger-action"
+              autoFocus={sceneMenu.ids.length > 1}
               onClick={() => {
                 stop();
-                setSelecting(sceneMenu.id);
+                setAutoPlay(false);
+                setSceneDeletion({ ids: sceneMenu.ids, documentId: doc.id });
                 setSceneMenu(null);
               }}
             >
-              重框
-            </button>
-            <button
-              role="menuitem"
-              disabled={scenes[0]?.id === sceneMenu.id}
-              onClick={() => {
-                const next = [...scenes];
-                const i = next.findIndex((s) => s.id === sceneMenu.id);
-                [next[i - 1], next[i]] = [next[i], next[i - 1]];
-                updateScenes(next);
-                setSceneMenu(null);
-              }}
-            >
-              上移
-            </button>
-            <button
-              role="menuitem"
-              onClick={() => {
-                updateScenes(scenes.filter((s) => s.id !== sceneMenu.id));
-                setSceneMenu(null);
-              }}
-            >
-              删除场景
+              {sceneMenu.ids.length > 1
+                ? `删除已选场景（${sceneMenu.ids.length}）`
+                : '删除场景'}
             </button>
           </div>
         </div>
@@ -1711,7 +1817,7 @@ function App() {
           <div
             className={`presentation-ink ${pen ? 'drawing' : ''}`}
             data-ink-count={inkCount}
-            onPointerDownCapture={stop}
+            onPointerDownCapture={fitOnMiddleDoubleClick}
           >
             <Excalidraw
               langCode="zh-CN"
@@ -2129,6 +2235,63 @@ function App() {
           </section>
         </div>
       )}
+      {sceneDeletion && (
+        <div
+          className="modal-backdrop"
+          onKeyDown={(event) => {
+            event.stopPropagation();
+            if (event.key === 'Escape') setSceneDeletion(null);
+            if (event.key === 'Tab') {
+              event.preventDefault();
+              const buttons = [
+                ...event.currentTarget.querySelectorAll('button'),
+              ];
+              const index = buttons.indexOf(root.ownerDocument.activeElement);
+              buttons[
+                (index + (event.shiftKey ? -1 : 1) + buttons.length) %
+                  buttons.length
+              ]?.focus();
+            }
+          }}
+        >
+          <section
+            className="modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="scene-delete-title"
+            aria-describedby="scene-delete-description"
+          >
+            <h2 id="scene-delete-title">
+              删除 {sceneDeletion.ids.length} 个场景？
+            </h2>
+            <p id="scene-delete-description">
+              只删除所选场景的导航区域，不删除白板上的文字或图形。
+            </p>
+            <ul>
+              {scenes
+                .filter((scene) => sceneDeletion.ids.includes(scene.id))
+                .slice(0, 5)
+                .map((scene) => (
+                  <li key={scene.id}>{scene.title}</li>
+                ))}
+            </ul>
+            {sceneDeletion.ids.length > 5 && (
+              <p>另有 {sceneDeletion.ids.length - 5} 个场景。</p>
+            )}
+            <div className="menu-form-actions">
+              <button autoFocus onClick={() => setSceneDeletion(null)}>
+                取消
+              </button>
+              <button
+                className="danger-button"
+                onClick={() => run(confirmSceneDeletion)}
+              >
+                确认删除
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
       {fileInfo && (
         <div className="modal-backdrop">
           <section className="modal">
@@ -2155,6 +2318,7 @@ function App() {
         <div className="modal-backdrop">
           <section className="modal">
             <h2>回收站</h2>
+            {!nodes.some((node) => node.deleted) && <p>回收站为空。</p>}
             {nodes
               .filter((n) => n.deleted)
               .map((n) => (
@@ -2172,7 +2336,52 @@ function App() {
                   </button>
                 </p>
               ))}
-            <button onClick={() => setTrash(false)}>关闭</button>
+            {emptyTrashConfirm ? (
+              <div
+                className="menu-confirm"
+                role="alertdialog"
+                aria-label="确认清空回收站"
+              >
+                <h3>永久清空回收站？</h3>
+                <p>
+                  将删除 {nodes.filter((node) => node.deleted).length}{' '}
+                  项及其历史版本，无法在回收站恢复。磁盘上的关联文件和已有备份保留。
+                </p>
+                <div className="menu-form-actions">
+                  <button autoFocus onClick={() => setEmptyTrashConfirm(false)}>
+                    取消清空
+                  </button>
+                  <button
+                    className="danger-button"
+                    onClick={() =>
+                      run(async () => {
+                        await bridge.invoke('emptyTrash');
+                        setEmptyTrashConfirm(false);
+                        await refresh();
+                      })
+                    }
+                  >
+                    确认永久清空
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                className="danger-button"
+                disabled={!nodes.some((node) => node.deleted)}
+                onClick={() => setEmptyTrashConfirm(true)}
+              >
+                清空回收站
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setEmptyTrashConfirm(false);
+                setTrash(false);
+              }}
+            >
+              关闭
+            </button>
           </section>
         </div>
       )}

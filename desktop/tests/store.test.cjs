@@ -67,6 +67,63 @@ test('folder moves reject cycles; trash is recoverable', (t) => {
   store.trash(d, false);
   assert.equal(store.read(d).title, 'renamed');
 });
+test('empty trash atomically removes deleted hierarchy, revisions and links while preserving live data', (t) => {
+  const { store } = fixture(t),
+    live = store.list()[0].id;
+  const parent = store.create('folder', null, 'parent'),
+    child = store.create('folder', parent, 'child');
+  const id = store.create('document', child, 'deleted');
+  store.save(id, { ...blank(), elements: [{ id: 'x' }] }, 0);
+  store.setSetting(`documentFile:${id}`, '{"path":"untouched"}');
+  store.trash(id, true);
+  store.trash(child, true);
+  store.trash(parent, true);
+  assert.equal(store.emptyTrash(), 3);
+  assert.equal(store.read(live).id, live);
+  assert.throws(() => store.node(id), /不存在/);
+  assert.equal(store.getSetting(`documentFile:${id}`), null);
+  assert.equal(
+    store.db
+      .prepare('SELECT count(*) AS n FROM revisions WHERE document=?')
+      .get(id).n,
+    0,
+  );
+  assert.equal(store.emptyTrash(), 0);
+});
+test('linked scene IDs survive workspace backup and restore; malformed bindings are rejected', (t) => {
+  const { store } = fixture(t),
+    data = {
+      ...blank(),
+      scenes: [
+        {
+          id: 's',
+          title: 'linked',
+          rect: { x: 0, y: 0, width: 50, height: 60 },
+          binding: { elementIds: ['e'], groupIds: ['g'] },
+        },
+      ],
+    };
+  const id = store.create('document', null, 'linked', data),
+    copyRoot = store.restore(store.backup());
+  const copy = store
+    .list()
+    .find((n) => n.parent === copyRoot && n.title === 'linked');
+  assert.deepEqual(store.read(copy.id).data, data);
+  assert.throws(
+    () =>
+      store.save(
+        id,
+        {
+          ...data,
+          scenes: [
+            { ...data.scenes[0], binding: { elementIds: [], groupIds: [] } },
+          ],
+        },
+        0,
+      ),
+    /关联/,
+  );
+});
 test('backup imports complete hierarchy and scenes without overwriting originals', (t) => {
   const { store } = fixture(t),
     f = store.create('folder', null, 'project'),

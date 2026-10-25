@@ -24,6 +24,21 @@ function payload(value) {
     ids.add(s.id);
     name(s.title);
     if (
+      s.binding !== undefined &&
+      (!s.binding ||
+        !['elementIds', 'groupIds'].every(
+          (key) =>
+            Array.isArray(s.binding[key]) &&
+            s.binding[key].length <= 10000 &&
+            s.binding[key].every(
+              (id) =>
+                typeof id === 'string' && id.length > 0 && id.length <= 200,
+            ),
+        ) ||
+        !s.binding.elementIds.length)
+    )
+      throw new Error('场景元素关联无效');
+    if (
       !s.rect ||
       !['x', 'y', 'width', 'height'].every((k) => Number.isFinite(s.rect[k])) ||
       s.rect.width <= 0 ||
@@ -138,6 +153,36 @@ class Store {
     this.db
       .prepare('UPDATE nodes SET deleted=?,updated=? WHERE id=?')
       .run(deleted ? 1 : 0, Date.now(), id);
+  }
+  emptyTrash() {
+    return this.transaction(() => {
+      const ids = this.db
+        .prepare('SELECT id FROM nodes WHERE deleted=1')
+        .all()
+        .map((row) => row.id);
+      // Detach children first so foreign keys cannot invalidate the atomic purge.
+      this.db
+        .prepare(
+          'UPDATE nodes SET parent=NULL WHERE parent IN (SELECT id FROM nodes WHERE deleted=1)',
+        )
+        .run();
+      this.db
+        .prepare(
+          'DELETE FROM revisions WHERE document IN (SELECT id FROM nodes WHERE deleted=1)',
+        )
+        .run();
+      for (const id of ids) {
+        this.db
+          .prepare('DELETE FROM settings WHERE key=?')
+          .run(`documentFile:${id}`);
+        if (this.getSetting('activeDocument') === id)
+          this.db
+            .prepare("DELETE FROM settings WHERE key='activeDocument'")
+            .run();
+      }
+      this.db.prepare('DELETE FROM nodes WHERE deleted=1').run();
+      return ids.length;
+    });
   }
   save(id, data, revision) {
     const json = payload(data);

@@ -84,6 +84,7 @@ else {
         rename: (...args) => store.rename(...args),
         move: (...args) => store.move(...args),
         trash: (...args) => store.trash(...args),
+        emptyTrash: () => store.emptyTrash(),
         getSetting: (key) =>
           ['sidebarWidths', 'collapsedFolders'].includes(key)
             ? JSON.parse(store.getSetting(key) || 'null')
@@ -281,18 +282,32 @@ else {
             filters: [{ name: 'PDF', extensions: ['pdf'] }],
           });
           if (result.canceled) return false;
-          const printWindow = new BrowserWindow({
-            show: false,
-            webPreferences: {
-              sandbox: true,
-              contextIsolation: true,
-              nodeIntegration: false,
-            },
-          });
+          const workDirectory = fs.mkdtempSync(
+            join(app.getPath('temp'), 'local-canvas-pdf-'),
+          );
+          const temporary = `${result.filePath}.${basename(workDirectory)}.tmp`;
+          let printWindow;
           try {
-            const html = `<html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'"><style>@page{size:A4 landscape;margin:0}body{margin:0}section{width:297mm;height:210mm;display:flex;align-items:center;justify-content:center;break-after:page}section:last-child{break-after:auto}img{max-width:287mm;max-height:200mm;object-fit:contain}</style></head><body>${pages.map((p) => `<section><img src="${p}"></section>`).join('')}</body></html>`;
-            await printWindow.loadURL(
-              `data:text/html;charset=utf-8,${encodeURIComponent(html)}`,
+            printWindow = new BrowserWindow({
+              show: false,
+              webPreferences: {
+                sandbox: true,
+                contextIsolation: true,
+                nodeIntegration: false,
+              },
+            });
+            pages.forEach((page, index) =>
+              fs.writeFileSync(
+                join(workDirectory, `page-${index}.png`),
+                Buffer.from(page.slice(page.indexOf(',') + 1), 'base64'),
+              ),
+            );
+            const html = `<html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src file:; style-src 'unsafe-inline'"><style>@page{size:A4 landscape;margin:0}body{margin:0}section{width:297mm;height:210mm;display:flex;align-items:center;justify-content:center;break-after:page}section:last-child{break-after:auto}img{max-width:287mm;max-height:200mm;object-fit:contain}</style></head><body>${pages.map((_, index) => `<section><img src="page-${index}.png"></section>`).join('')}</body></html>`;
+            const htmlPath = join(workDirectory, 'print.html');
+            fs.writeFileSync(htmlPath, html);
+            await printWindow.loadFile(htmlPath);
+            await printWindow.webContents.executeJavaScript(
+              'Promise.all(Array.from(document.images, image => image.decode()))',
             );
             const pdf = await printWindow.webContents.printToPDF({
               landscape: true,
@@ -300,12 +315,19 @@ else {
               preferCSSPageSize: true,
               margins: { top: 0, bottom: 0, left: 0, right: 0 },
             });
-            const temporary = `${result.filePath}.${process.pid}.tmp`;
-            fs.writeFileSync(temporary, pdf, { flag: 'wx' });
+            const fd = fs.openSync(temporary, 'wx');
+            try {
+              fs.writeFileSync(fd, pdf);
+              fs.fsyncSync(fd);
+            } finally {
+              fs.closeSync(fd);
+            }
             fs.renameSync(temporary, result.filePath);
             return true;
           } finally {
-            printWindow.destroy();
+            printWindow?.destroy();
+            fs.rmSync(temporary, { force: true });
+            fs.rmSync(workDirectory, { recursive: true, force: true });
           }
         },
         async exportDocument(id, data, native) {

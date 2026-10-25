@@ -13,7 +13,7 @@ NSGraphicsContext.current!.imageInterpolation = .high
 // margin without accumulating a second platform padding around that margin.
 image.draw(in: NSRect(x:0,y:0,width:1024,height:1024), from: .zero, operation: .copy, fraction: 1)
 var left=1024, top=1024, right = -1, bottom = -1
-for y in 0..<1024 { for x in 0..<1024 { if bitmap.bitmapData![y * bitmap.bytesPerRow + x * 4 + 3] > 0 { left=min(left,x); top=min(top,y); right=max(right,x); bottom=max(bottom,y) } } }
+for y in 0..<1024 { for x in 0..<1024 { if bitmap.bitmapData![y * bitmap.bytesPerRow + x * 4 + 3] > 8 { left=min(left,x); top=min(top,y); right=max(right,x); bottom=max(bottom,y) } } }
 left=max(0,left-2); top=max(0,top-2); right=min(1023,right+2); bottom=min(1023,bottom+2)
 bitmap.bitmapData!.initialize(repeating: 0, count: bitmap.bytesPerRow * 1024)
 let crop=NSRect(x:Double(left)*image.size.width/1024, y:Double(1023-bottom)*image.size.height/1024, width:Double(right-left+1)*image.size.width/1024, height:Double(bottom-top+1)*image.size.height/1024)

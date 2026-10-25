@@ -14,6 +14,22 @@ async function launch() {
   await expect(page.locator('.excalidraw')).toBeVisible();
   return page;
 }
+async function expectCornerSpacing(page) {
+  await expect
+    .poll(async () => {
+      const [theme, exportButton, sidebarButton] = await Promise.all([
+        page.locator('.theme-picker').boundingBox(),
+        page.locator('.export-toggle').boundingBox(),
+        page.locator('.scene-panel-toggle').boundingBox(),
+      ]);
+      return {
+        themeSeparated: exportButton.x - theme.x - theme.width >= 8,
+        buttonsSeparated:
+          sidebarButton.x - exportButton.x - exportButton.width >= 4,
+      };
+    })
+    .toEqual({ themeSeparated: true, buttonsSeparated: true });
+}
 try {
   let page = await launch();
   await page.evaluate(async () => {
@@ -94,16 +110,32 @@ try {
       '13px',
     );
     const highlight = await page.locator('.tree-row.active').evaluate((row) => {
-      const style = row.ownerDocument.defaultView.getComputedStyle(row);
+      const style = row.ownerDocument.defaultView.getComputedStyle(
+        row,
+        '::before',
+      );
       const sample = row.ownerDocument.createElement('span');
       sample.style.backgroundColor = 'var(--tree-selected)';
       row.append(sample);
-      const expected = row.ownerDocument.defaultView.getComputedStyle(sample)
-        .backgroundColor;
+      const expected =
+        row.ownerDocument.defaultView.getComputedStyle(sample).backgroundColor;
       sample.remove();
-      return { actual: style.backgroundColor, expected };
+      const guide = row.querySelector('.tree-guide:last-of-type');
+      return {
+        actual: style.backgroundColor,
+        expected,
+        marker: style.boxShadow,
+        start: parseFloat(style.left),
+        deepestGuide: Math.max(
+          ...[...row.querySelectorAll('.tree-guide')].map((node) =>
+            parseFloat(node.style.left),
+          ),
+        ),
+      };
     });
     expect(highlight.actual).toBe(highlight.expected);
+    expect(highlight.marker).toBe('none');
+    expect(highlight.start).toBeGreaterThan(highlight.deepestGuide);
     await page.waitForTimeout(650);
     expect((await data()).data).toEqual(original);
     await page.screenshot({ path: `test-results/theme-${theme}.png` });
@@ -118,8 +150,21 @@ try {
     await expect(page.locator('.files')).toBeHidden();
     await page.getByRole('button', { name: '隐藏场景', exact: true }).click();
     await expect(page.locator('.scenes')).toBeHidden();
+    await expectCornerSpacing(page);
     await page.getByRole('button', { name: '显示文件栏', exact: true }).click();
     await expect(page.locator('.files')).toBeVisible();
+    for (const width of [1000, 1200, 1440]) {
+      await app.evaluate(({ BrowserWindow }, width) => {
+        BrowserWindow.getAllWindows()[0].setSize(width, 940);
+      }, width);
+      await expectCornerSpacing(page);
+    }
+    await page
+      .locator('header')
+      .screenshot({ path: `test-results/header-hidden-${theme}.png` });
+    await page.getByRole('button', { name: '导出', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: '导出选项' })).toBeVisible();
+    await page.getByRole('button', { name: '关闭导出', exact: true }).click();
     await page.getByRole('button', { name: '显示场景', exact: true }).click();
   }
   await page
@@ -194,7 +239,7 @@ try {
     .screenshot({ path: 'test-results/help-windows-simulated.png' });
   expect(errors).toEqual([]);
   console.log(
-    'PASS: four themes without document mutations, independent sidebars, middle-double-click 100%, custom menu, hidden help links, Mac and simulated Win32 shortcut labels, persisted appearance',
+    'PASS: four themes without document mutations, tree highlights inside indentation guides, independent sidebars, hidden-sidebar corner spacing, small-content fit, custom menu, hidden help links, Mac and simulated Win32 shortcut labels, persisted appearance',
   );
 } finally {
   if (app) await app.close();

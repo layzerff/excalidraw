@@ -119,11 +119,3 @@ export function themeStyle(value) {
     ['--tree-marker', tree[2]],
   ]);
 }
-export function resetZoomView(state) {
-  const zoom = state.zoom.value;
-  return {
-    zoom: { value: 1 },
-    scrollX: state.scrollX + state.width / 2 - state.width / (2 * zoom),
-    scrollY: state.scrollY + state.height / 2 - state.height / (2 * zoom),
-  };
-}

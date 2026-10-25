@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { THEMES, themeId, themeStyle, resetZoomView } from '../src/themes.mjs';
+import { THEMES, themeId, themeStyle } from '../src/themes.mjs';
 test('four complete themes with safe persisted-value fallback', () => {
   assert.deepEqual(Object.keys(THEMES), [
     'github',
@@ -16,33 +16,6 @@ test('four complete themes with safe persisted-value fallback', () => {
   for (const input of ['unknown', null, undefined, '__proto__'])
     assert.equal(themeId(input), 'github');
   assert.equal(THEMES.vscode.dark, true);
-});
-test('middle-button reset returns exactly 100% and preserves scene center', () => {
-  for (const zoom of [0.1, 0.5, 1, 2, 5]) {
-    const state = {
-        zoom: { value: zoom },
-        width: 900,
-        height: 600,
-        scrollX: -350,
-        scrollY: 120,
-      },
-      next = resetZoomView(state);
-    assert.equal(next.zoom.value, 1);
-    assert.ok(
-      Math.abs(
-        -next.scrollX +
-          state.width / 2 -
-          (-state.scrollX + state.width / (2 * zoom)),
-      ) < 1e-8,
-    );
-    assert.ok(
-      Math.abs(
-        -next.scrollY +
-          state.height / 2 -
-          (-state.scrollY + state.height / (2 * zoom)),
-      ) < 1e-8,
-    );
-  }
 });
 test('theme normal and selected foregrounds meet readable contrast', () => {
   const luminance = (hex) => {

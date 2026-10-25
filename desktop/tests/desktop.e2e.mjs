@@ -101,7 +101,9 @@ try {
     page.locator('.scenes').getByRole('button', { name: '保存', exact: true }),
   ).toHaveCount(0);
   await expect(page.locator('.scenes .duration select')).toHaveCount(0);
-  await page.getByRole('button', { name: '保存当前视图', exact: true }).click();
+  await page
+    .getByRole('button', { name: '添加当前视图为场景', exact: true })
+    .click();
   await expect(page.locator('.scene')).toHaveCount(1);
   await page.getByRole('button', { name: '＋ 框选区域', exact: true }).click();
   const box = await page.locator('.selection-layer').boundingBox();
@@ -458,7 +460,9 @@ try {
   await expect(page.locator('.scene')).toHaveCount(2);
   await page.screenshot({ path: 'test-results/desktop.png' });
   // Close immediately with a newly queued scene: beforeunload must flush it.
-  await page.getByRole('button', { name: '保存当前视图', exact: true }).click();
+  await page
+    .getByRole('button', { name: '添加当前视图为场景', exact: true })
+    .click();
   await expect(page.locator('.scene')).toHaveCount(3);
   await app.close();
   app = null;
@@ -475,8 +479,9 @@ try {
   await page.locator('.modal input').fill('字体与场景演示');
   await page.getByRole('button', { name: '确定', exact: true }).click();
   await expect(page.locator('header select')).toHaveCount(1);
-  await expect(page.getByRole('combobox', { name: '界面主题', exact: true }))
-    .toHaveValue('github');
+  await expect(
+    page.getByRole('combobox', { name: '界面主题', exact: true }),
+  ).toHaveValue('github');
   await page
     .locator('label')
     .filter({ has: page.locator('[data-testid="toolbar-text"]') })
@@ -496,8 +501,12 @@ try {
         ).length,
     )
     .toBe(1);
-  await page.getByRole('button', { name: '保存当前视图', exact: true }).click();
-  await page.getByRole('button', { name: '保存当前视图', exact: true }).click();
+  await page
+    .getByRole('button', { name: '添加当前视图为场景', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: '添加当前视图为场景', exact: true })
+    .click();
   await page.screenshot({ path: 'test-results/desktop-current.png' });
   const textPDF = join(profile, 'text.pdf');
   await app.evaluate(({ dialog }, filePath) => {
