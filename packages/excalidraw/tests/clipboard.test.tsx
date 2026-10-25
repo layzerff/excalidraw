@@ -355,7 +355,33 @@ describe("paste text as a single element", () => {
       expect(getRight(text)).toBeLessThanOrEqual(
         700 - TEXT_VIEWPORT_PADDING + 0.01,
       );
-      expect(h.history.undoStack.length).toBe(undoSteps + 1);
+      // The stats-panel measurement renders the inserted text synchronously,
+      // before the final layout and history capture have committed.
+      await waitFor(() => {
+        expect(h.history.undoStack.length).toBe(undoSteps + 1);
+      });
+
+      const pastedLayout = {
+        x: text.x,
+        y: text.y,
+        width: text.width,
+        height: text.height,
+        text: text.text,
+      };
+      Keyboard.undo();
+      await waitFor(() => {
+        expect(h.elements.filter((element) => !element.isDeleted)).toHaveLength(
+          0,
+        );
+        expect(h.history.undoStack.length).toBe(undoSteps);
+      });
+      Keyboard.redo();
+      await waitFor(() => {
+        const restored = h.elements.filter((element) => !element.isDeleted);
+        expect(restored).toHaveLength(1);
+        expect(restored[0]).toMatchObject({ id: text.id, ...pastedLayout });
+        expect(h.history.undoStack.length).toBe(undoSteps + 1);
+      });
     });
   });
   it("should move a pasted text that wraps into view, not the view", async () => {
