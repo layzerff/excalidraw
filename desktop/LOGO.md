@@ -1,8 +1,10 @@
-# Canvas logo — 0.2.2
+# Canvas logo — 0.3.0 platform layout (0.2.2 artwork)
 
 Input: user-supplied Canvas logo reference and the 0.2.1 derivative, 2026-10-25. The built-in image editing tool preserved the blue crosshatch and black handwritten Canvas word, changed the border to black, enlarged the lettering slightly and applied an approximate Apple-style continuous-corner app-icon silhouette. Outside corners are genuinely transparent, not a white corner backdrop. This is not the Apple symbol or a claim of exact proprietary mask geometry. No CLI image generation API was used.
 
 Project source: `build/app-icon.png` (1024px). Platform assets: `build/app-icon.ico`, `build/app-icon.icns`. README preview: `../docs/local-canvas/logo.png`. `node scripts/icons.mjs` performs deterministic size/format conversion on macOS using sips; it does not generate or redraw the design. These committed assets let Windows builds run without macOS conversion tools.
+
+0.3.0 adds `build/app-icon-mac.png`, mechanically fitting the unchanged artwork into an 832px area centered on a 1024px transparent canvas. `scripts/mac-icon.swift` uses AppKit for deterministic platform layout and `scripts/icons.mjs` builds the legacy ICNS (including regular small-size entries) from it. A Finder side-by-side comparison with the system Calculator icon confirmed comparable visible areas and no obvious secondary surrounding plate. This platform padding is not added to the in-app PNG or Windows ICO. The artwork editing prompt below is unchanged from 0.2.2; no new AI image generation was used for this release.
 
 Final editing prompt:
 

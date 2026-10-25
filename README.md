@@ -17,6 +17,7 @@
 | 导航时长 | 编辑侧栏固定 0.5 秒；演示中的手动翻页与自动播放可选 0.5、1、1.5、2 秒 |
 | 全屏场景演示 | 从排序第一项开始，底部手动翻页或自动演示；图层面板可拖拽排序、右键原位改名，退出恢复编辑视图 |
 | 循环演示与只读浏览 | 自动演示可开启循环，末页回首页继续；独立“画布只读”禁止元素编辑、拖动和删除，同时允许平移缩放，保留原生工具锁的连续绘制语义 |
+| 统一工作区界面 | GitHub/Primer 风格浅色主题，灰白分区、蓝色选中态、细边框和紧凑间距；操作菜单、输入表单与危险操作独立分组 |
 | 文件打开与保存 | 系统窗口选择文件，手动保存写回原文件；另存为选择新位置，“文件信息”查看路径。内容自动保存到本机恢复副本，外部文件变更时拒绝覆盖 |
 | 演示临时画笔 | 直接使用 Excalidraw 原生自由画笔和样式面板，支持描边、背景、粗细及透明度；翻页或退出清除 |
 | 集中导出 | 右上角统一入口，可框选区域导出 PNG、SVG、PDF；支持整板、场景分页 PDF 及完整可编辑文档 |
@@ -25,11 +26,19 @@
 
 ## 编辑与场景管理
 
-当前桌面版本：**0.2.2**。文件树使用清晰缩进与层级引导线，当前文档及全部上级文件夹联动高亮；演示面板统一字号，支持循环开关。界面、macOS 应用、Windows 安装与免安装版使用同一款黑边框、透明连续圆角的 Canvas 网格手写 Logo。
+当前桌面版本：**0.3.0**。整体使用 GitHub/Primer 风格浅色界面；保留原生绘图、文件管理、可靠保存、场景与演示能力。Mac 图标使用独立平台布局，已在 Finder 中与系统应用并排核查显示占比，应用内与 Windows 的 Logo 样式不变。
 
 <img src="docs/local-canvas/logo.png" width="128" alt="Canvas 网格手写 Logo：黑色边框、透明连续圆角" />
 
-![Local Canvas 0.2.2 实机文件树与黑框新 Logo](docs/local-canvas/files-current.png)
+![Local Canvas 0.3.0 实机：GitHub 风格工作区、文件树和场景列表](docs/local-canvas/files-current.png)
+
+三点菜单只显示清楚分组的操作项。选择重命名或移动后才显示对应表单，输入与确认按钮分区；选择移动目标不会立即执行，回收站操作需确认。
+
+| 操作列表 | 重命名表单 | 移动表单 |
+| --- | --- | --- |
+| ![实机分组菜单](docs/local-canvas/menu-actions.png) | ![实机重命名输入与确认区](docs/local-canvas/menu-rename.png) | ![实机移动目标与确认区](docs/local-canvas/menu-move.png) |
+
+设计参考：[Primer ActionMenu](https://primer.style/product/components/action-menu/)、[Primer 色彩用法](https://primer.style/product/getting-started/foundations/color-usage/)。仅借鉴界面风格，不使用 GitHub 账户或联网服务。
 
 [演示面板统一字号实机截图](docs/local-canvas/presentation-fonts.png)
 
@@ -39,7 +48,7 @@
 
 临时画笔允许连续书写多笔，翻页及退出时清除；不写入文档、备份或 PDF。编辑和备份仍使用完整文档或 `.excalidraw` 格式。
 
-![0.2.2 演示面板：循环开关与独立的移动、停留时间](docs/local-canvas/presentation-loop.png)
+![演示面板：循环开关与独立的移动、停留时间](docs/local-canvas/presentation-loop.png)
 
 自动演示每页停留可选 1、2、3、5、10、15、30 秒（默认 3 秒），与移动时长分别设置。循环默认关闭：关闭时到末页停止，开启时自动回到首页继续；记住开关偏好，但不会在重启后自行播放。打开图层面板或启用临时画笔时暂停自动播放。
 

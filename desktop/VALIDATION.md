@@ -1,5 +1,14 @@
 # Milestone validation — 2026-10-17
 
+## 0.3.0 — 2026-10-25
+
+- Production build and 12 unit/resource checks passed, including regular/retina ICNS entries and decoded RGBA bounds for the Mac platform icon (transparent padding and approximately 832px artwork).
+- Actual Mac arm64 packaged application passed the extended workspace regression: keyboard-triggered row-local menu, action groups without embedded fields, destructive styling, independent focused rename form, successful rename, non-empty-folder error in the popover, cancel without deletion, Home/End/Escape focus navigation, choosing a move target without moving until confirmation, ancestor highlighting, native read-only protection, looping presentation, uniform fonts and restart preferences.
+- The first complete editor regression attempt stopped at the previously observed native temporary-ink undo assertion. A second full packaged run passed drawing/undo/redo, scene selection/reordering/navigation, fullscreen layers/autoplay/ink, file links/conflict protection, graphics/PDF/document exports/imports, backup/restore, migration, close-time flush and restart. This is not a claim that the underlying intermittent ink-history issue was fixed.
+- Finder icon view on macOS 26.6.2 was inspected side-by-side with a system Calculator reference. The platform-specific ICNS showed comparable visible size and no obvious extra surrounding plate. The temporary reference link and task-created Finder window were cleaned up; no installed application was replaced and no icon cache was reset.
+- Mac packaged ICNS matches the committed source; deep/strict ad-hoc signature verification and ZIP integrity checks passed. Windows main EXE, NSIS installer and portable launcher retain the approved custom icon, and both executable archive tests passed. All 193 packaged JS/CSS files match byte-for-byte between Mac and Windows. No Windows runtime test, Apple notarization or Authenticode signing.
+- New menu screenshots are element captures from the running packaged app, not design mockups; overall and presentation/export screenshots were refreshed from actual regression runs.
+
 ## 0.2.2 — 2026-10-25
 
 - Production build and all 11 unit/resource checks passed.
