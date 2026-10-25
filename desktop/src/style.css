@@ -62,6 +62,8 @@ select {
   padding: 6px 8px;
 }
 .workspace {
+  color: var(--text, #1f2328);
+  background: var(--surface);
   display: grid;
   grid-template-columns: var(--files-width, 240px) minmax(480px, 1fr) var(
       --scenes-width,
@@ -208,12 +210,15 @@ select {
   border: 0;
   box-shadow: none;
   padding: 5px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .tree-row button:hover {
   background: #afb8c133;
 }
 .node-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   flex: 1;
   min-width: 0;
   text-align: left;
@@ -222,8 +227,8 @@ select {
   white-space: nowrap;
 }
 .tree-row.folder-row .node-title {
-  font-size: 14px;
-  font-weight: 650;
+  font-size: 13px;
+  font-weight: 600;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -275,7 +280,7 @@ main {
 header {
   height: 60px;
   flex-shrink: 0;
-  padding: 12px 20px;
+  padding: 10px 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -873,4 +878,240 @@ header strong {
 .presenting .excalidraw .layer-ui__wrapper__footer-left,
 .presenting .excalidraw .layer-ui__wrapper__footer-right {
   display: none !important;
+}
+/* Per-theme semantic tokens apply to every shell surface, not drawing data. */
+.workspace button:hover {
+  background: var(--hover);
+  border-color: var(--muted);
+}
+.workspace :is(button, input, select) {
+  border-radius: var(--control-radius);
+}
+.workspace :is(.root, .tree-row) {
+  border-radius: var(--control-radius);
+}
+.workspace
+  :is(
+    .file-info-button[aria-pressed='true'],
+    .scene-context-menu button:hover,
+    .file-menu > button:hover,
+    .file-menu > button:focus-visible,
+    .presentation-controls button[aria-pressed='true']
+  ) {
+  color: var(--strong);
+  background: var(--selected);
+}
+.workspace .folder-selected {
+  background: var(--ancestor);
+  color: var(--strong);
+  box-shadow: inset 2px 0 var(--accent);
+}
+.workspace .tree-row.active {
+  box-shadow: inset 2px 0 var(--tree-marker);
+}
+.workspace .tree-row.active,
+.workspace .tree-row.active:hover {
+  background: var(--tree-selected);
+  color: var(--text);
+}
+.workspace .folder-selected {
+  background: var(--tree-ancestor);
+  color: var(--text);
+  box-shadow: none;
+}
+.workspace .selection-layer {
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+.workspace .selection-box {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.workspace .sidebar-resizer:hover {
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.workspace[data-theme='vscode'] .error {
+  background: #332b00;
+  color: #e2c14a;
+  border-color: #6b5900;
+}
+.workspace[data-theme] .excalidraw {
+  --border-radius-lg: var(--control-radius);
+  --border-radius-md: var(--control-radius);
+}
+.workspace .tree-row button:hover {
+  background: var(--hover);
+}
+.workspace :is(.primary-action, .scene-create > button:first-child) {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-text);
+}
+.workspace
+  :is(.primary-action:hover, .scene-create > button:first-child:hover) {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+.workspace .empty h1 {
+  color: var(--text);
+}
+.workspace .empty > span {
+  color: var(--muted);
+}
+.workspace :is(.danger-action, .danger-button) {
+  color: var(--danger);
+}
+.workspace
+  :is(.danger-action:hover, .danger-action:focus-visible, .menu-error) {
+  color: var(--danger-strong);
+  background: var(--danger-bg);
+}
+.workspace .danger-button:hover {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--surface);
+}
+.workspace .modal {
+  background: var(--surface);
+}
+.workspace .presentation-controls {
+  background: var(--surface);
+}
+.workspace .presentation-controls button[aria-pressed='true'] {
+  border-color: var(--accent);
+}
+.workspace .presenting,
+.workspace.presenting {
+  background: var(--surface);
+}
+.workspace[data-theme='vscode'] {
+  color-scheme: dark;
+}
+.workspace[data-theme='vscode'] :is(.files, .scenes) {
+  background: #181818;
+}
+.workspace[data-theme='vscode']
+  :is(
+    .scene,
+    .file-menu,
+    .modal,
+    .export-menu,
+    .scene-context-menu,
+    .presentation-controls
+  ) {
+  border-radius: 2px;
+}
+.workspace[data-theme='reddit'] :is(.scene, .root, .tree-row) {
+  border-radius: 14px;
+}
+.workspace[data-theme='reddit']
+  :is(.file-menu, .modal, .export-menu, .presentation-controls) {
+  border-radius: 16px;
+}
+.workspace[data-theme='reddit'] .scene-create > button:first-child {
+  border-radius: 20px;
+}
+.workspace[data-theme='notion'] .scene {
+  border-color: transparent;
+  border-bottom-color: var(--border);
+  border-radius: 0;
+}
+.workspace[data-theme='notion'] .tree-row.active {
+  box-shadow: none;
+}
+.workspace[data-theme='notion']
+  :is(.file-menu, .export-menu, .scene-context-menu) {
+  border-radius: 4px;
+}
+:root[data-ui-theme] .excalidraw:not(.theme--dark),
+:root[data-ui-theme='vscode'] .excalidraw {
+  --color-primary: var(--accent);
+  --color-primary-darker: var(--strong);
+  --color-primary-darkest: var(--strong);
+  --color-primary-light: var(--selected);
+  --color-primary-light-darker: var(--ancestor);
+  --color-primary-hover: var(--strong);
+  --color-surface-high: var(--hover);
+  --color-surface-mid: var(--subtle);
+  --color-surface-low: var(--hover);
+  --color-surface-lowest: var(--surface);
+  --color-on-surface: var(--text);
+  --color-brand-hover: var(--strong);
+  --color-brand-active: var(--accent);
+  --color-on-primary-container: var(--strong);
+  --color-surface-primary-container: var(--selected);
+}
+.excalidraw .HelpDialog__header {
+  display: none;
+}
+.document-heading {
+  flex: 1;
+  min-width: 0;
+}
+.document-heading strong {
+  display: block;
+  max-width: none;
+  line-height: 20px;
+}
+.document-heading .save-state {
+  margin-top: 0;
+  line-height: 18px;
+}
+.header-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  align-items: center;
+}
+.header-actions .file-info-button {
+  margin: 0;
+  padding: 5px 9px;
+  height: 30px;
+  line-height: 18px;
+  font-size: 12px;
+}
+.header-actions .theme-picker {
+  height: 30px;
+}
+.header-actions .theme-picker select {
+  height: 30px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+.left-panel-toggle {
+  width: 32px;
+  height: 32px;
+  justify-content: center;
+}
+.left-panel-toggle {
+  flex-shrink: 0;
+  padding: 5px;
+  display: flex;
+  align-items: center;
+}
+.left-panel-toggle svg {
+  transform: scaleX(-1);
+}
+.theme-picker {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.theme-picker select {
+  max-width: 120px;
+  background: var(--surface);
+  color: var(--text);
+}
+.workspace.files-hidden {
+  grid-template-columns: minmax(480px, 1fr) var(--scenes-width, 230px);
+}
+.workspace.files-hidden.sidebar-hidden {
+  grid-template-columns: minmax(480px, 1fr);
+}
+.files-hidden > .files {
+  display: none;
+}
+.workspace.presenting {
+  display: block;
 }

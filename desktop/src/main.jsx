@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   Excalidraw,
+  MainMenu,
   CaptureUpdateAction,
   serializeAsJSON,
   viewportCoordsToSceneCoords,
@@ -10,6 +11,8 @@ import {
 } from '@excalidraw/excalidraw';
 import '@excalidraw/excalidraw/index.css';
 import './style.css';
+import { THEMES, themeId, themeStyle, resetZoomView } from './themes.mjs';
+import { ShellIcon, ThemePaletteIcon } from './ShellIcon.jsx';
 import {
   viewRect,
   targetView,
@@ -115,6 +118,17 @@ function FolderIcon({ open }) {
   );
 }
 function App() {
+  const [uiTheme, setUITheme] = useState('github');
+  const [fileSidebar, setFileSidebar] = useState(true);
+  const middleClick = useRef(null);
+  const [canvasDark, setCanvasDark] = useState(false);
+  useLayoutEffect(() => {
+    const element = root.ownerDocument.documentElement;
+    element.dataset.uiTheme = uiTheme;
+    for (const [key, value] of Object.entries(themeStyle(uiTheme)))
+      element.style.setProperty(key, value);
+    element.style.colorScheme = THEMES[uiTheme].dark ? 'dark' : 'light';
+  }, [uiTheme]);
   const [loopPresentation, setLoopPresentation] = useState(false);
   const [readOnly, setReadOnly] = useState(false);
   const [nodes, setNodes] = useState([]),
@@ -298,6 +312,23 @@ function App() {
     if (writeFile && bridge.saveFile(active.current.id, active.current.data))
       setStatus('已保存到原文件');
   };
+  const saveAs = async () => {
+    if (
+      !api.current ||
+      !active.current ||
+      busy ||
+      presentation.current ||
+      storagePending
+    )
+      return;
+    manualSave(false);
+    const link = await bridge.invoke(
+      'saveAsDocument',
+      active.current.id,
+      active.current.data,
+    );
+    if (link) setStatus('已另存为文件');
+  };
   const switchDoc = async (id) => {
     if (busy) return;
     if (active.current?.id === id && api.current) {
@@ -337,6 +368,12 @@ function App() {
       return;
     }
     run(async () => {
+      const theme = themeId(await bridge.invoke('getSetting', 'uiTheme'));
+      setUITheme(theme);
+      setCanvasDark(THEMES[theme].dark);
+      setFileSidebar(
+        (await bridge.invoke('getSetting', 'fileSidebar')) !== 'false',
+      );
       setLoopPresentation(
         (await bridge.invoke('getSetting', 'loopPresentation')) === 'true',
       );
@@ -392,13 +429,51 @@ function App() {
     };
     const saveKey = (e) => {
       if (
+        e.key === 'Escape' &&
+        root.ownerDocument.querySelector('.HelpDialog')
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        api.current?.updateScene({
+          appState: { openDialog: null },
+          captureUpdate: CaptureUpdateAction.NEVER,
+        });
+        return;
+      }
+      if (
+        e.altKey &&
+        e.shiftKey &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        e.key.toLowerCase() === 'd'
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        setCanvasDark((value) => !value);
+        return;
+      }
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        e.shiftKey &&
+        e.key.toLowerCase() === 'e' &&
+        !presentation.current &&
+        active.current
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        setExportMenu(true);
+        return;
+      }
+      if (
         (e.metaKey || e.ctrlKey) &&
         e.key.toLowerCase() === 's' &&
         !e.altKey
       ) {
         e.preventDefault();
         e.stopPropagation();
-        run(() => latest.current.manualSave());
+        run(() =>
+          e.shiftKey ? latest.current.saveAs() : latest.current.manualSave(),
+        );
       }
     };
     const periodic = ownerWindow.setInterval(() => {
@@ -505,7 +580,7 @@ function App() {
     const next = scenes[index + delta];
     if (next) navigate(next);
   };
-  latest.current = { exitPresentation, step, manualSave };
+  latest.current = { exitPresentation, step, manualSave, saveAs };
   useEffect(() => {
     const changedFullscreen = () => {
       if (!root.ownerDocument.fullscreenElement && presentation.current)
@@ -877,25 +952,11 @@ function App() {
                   );
                 }}
               >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                >
-                  <path
-                    d={
-                      collapsedFolders.includes(n.id)
-                        ? 'm9 5 7 7-7 7'
-                        : 'm5 9 7 7 7-7'
-                    }
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                <ShellIcon
+                  name="chevron"
+                  theme={uiTheme}
+                  open={!collapsedFolders.includes(n.id)}
+                />
               </button>
             )}
             <button
@@ -907,11 +968,11 @@ function App() {
                 )
               }
             >
-              {n.kind === 'folder' ? (
-                <FolderIcon open={!collapsedFolders.includes(n.id)} />
-              ) : (
-                '▧'
-              )}{' '}
+              <ShellIcon
+                name={n.kind === 'folder' ? 'folder' : 'document'}
+                theme={uiTheme}
+                open={!collapsedFolders.includes(n.id)}
+              />{' '}
               {n.title}
             </button>
             <button
@@ -943,8 +1004,10 @@ function App() {
   };
   return (
     <div
-      className={`workspace ${!sidebar ? 'sidebar-hidden' : ''} ${presenting ? 'presenting' : ''} ${layers ? 'show-layers' : ''}`}
+      data-theme={uiTheme}
+      className={`workspace ${!sidebar ? 'sidebar-hidden' : ''} ${!fileSidebar ? 'files-hidden' : ''} ${presenting ? 'presenting' : ''} ${layers ? 'show-layers' : ''}`}
       style={{
+        ...themeStyle(uiTheme),
         '--files-width': `${widths.left}px`,
         '--scenes-width': `${widths.right}px`,
       }}
@@ -954,7 +1017,7 @@ function App() {
         <div className="brand">
           <img className="logo" src="./app-icon.png" alt="Canvas 标志" />
           <div>
-            Local Canvas<small>本地无限画布 · v0.3.0</small>
+            Local Canvas<small>本地无限画布 · v0.4.0</small>
           </div>
         </div>
         <div className="section-title">
@@ -969,20 +1032,7 @@ function App() {
           >
             保存
           </button>
-          <button
-            disabled={!doc || busy}
-            onClick={() =>
-              run(async () => {
-                manualSave(false);
-                const link = await bridge.invoke(
-                  'saveAsDocument',
-                  doc.id,
-                  active.current.data,
-                );
-                if (link) setStatus('已另存为文件');
-              })
-            }
-          >
+          <button disabled={!doc || busy} onClick={() => run(saveAs)}>
             另存为
           </button>
         </div>
@@ -1012,16 +1062,7 @@ function App() {
           onDrop={(event) => dropOn(event, null)}
           title="右键新建白板或文件夹；拖入此处移回根目录"
         >
-          <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              d="m3 10 9-7 9 7v11h-6v-7H9v7H3V10Z"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinejoin="round"
-            />
-          </svg>{' '}
-          根目录
+          <ShellIcon name="home" theme={uiTheme} size={18} /> 根目录
         </button>
         <div className="tree">{tree()}</div>
         <details className="workspace-tools">
@@ -1067,8 +1108,25 @@ function App() {
       </aside>
       <main>
         <header>
-          <div>
+          <button
+            className="left-panel-toggle"
+            aria-label={fileSidebar ? '隐藏文件栏' : '显示文件栏'}
+            title={fileSidebar ? '隐藏文件栏' : '显示文件栏'}
+            onClick={() => {
+              const next = !fileSidebar;
+              setFileSidebar(next);
+              run(() =>
+                bridge.invoke('setSetting', 'fileSidebar', String(next)),
+              );
+            }}
+          >
+            <PanelIcon />
+          </button>
+          <div className="document-heading">
             <strong>{doc?.title || '选择或创建一张白板'}</strong>
+            <span className="save-state">{status}</span>
+          </div>
+          <div className="header-actions">
             {doc && (
               <button
                 className="file-info-button"
@@ -1095,7 +1153,25 @@ function App() {
                 {readOnly ? '解除只读' : '画布只读'}
               </button>
             )}
-            <span className="save-state">{status}</span>
+            <label className="theme-picker">
+              <ThemePaletteIcon />
+              <select
+                aria-label="界面主题"
+                value={uiTheme}
+                onChange={(event) => {
+                  const id = themeId(event.target.value);
+                  setUITheme(id);
+                  setCanvasDark(THEMES[id].dark);
+                  run(() => bridge.invoke('setSetting', 'uiTheme', id));
+                }}
+              >
+                {Object.entries(THEMES).map(([id, theme]) => (
+                  <option key={id} value={id}>
+                    {theme.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
         </header>
         {error && (
@@ -1108,7 +1184,46 @@ function App() {
         <div
           className="canvas"
           ref={stage}
-          onPointerDownCapture={stop}
+          onPointerDownCapture={(event) => {
+            stop();
+            if (
+              event.button !== 1 ||
+              !api.current ||
+              event.target.closest(
+                'button,input,select,textarea,a,[role="menu"],.App-menu,.layer-ui__wrapper,.excalidraw-textEditorContainer',
+              )
+            )
+              return;
+            const now = ownerWindow.performance.now(),
+              previous = middleClick.current;
+            middleClick.current = {
+              time: now,
+              x: event.clientX,
+              y: event.clientY,
+            };
+            if (
+              previous &&
+              now - previous.time < 400 &&
+              Math.hypot(
+                event.clientX - previous.x,
+                event.clientY - previous.y,
+              ) < 8
+            ) {
+              event.preventDefault();
+              event.stopPropagation();
+              middleClick.current = null;
+              setAutoPlay(false);
+              const view = resetZoomView(api.current.getAppState());
+              api.current.updateScene({
+                appState: view,
+                captureUpdate: CaptureUpdateAction.NEVER,
+              });
+              inkApi.current?.updateScene({
+                appState: view,
+                captureUpdate: CaptureUpdateAction.NEVER,
+              });
+            }
+          }}
           onWheelCapture={stop}
           onKeyDownCapture={stop}
         >
@@ -1117,6 +1232,14 @@ function App() {
               key={`${doc.id}:${editorEpoch}`}
               langCode="zh-CN"
               showDeprecatedFonts
+              theme={canvasDark ? 'dark' : 'light'}
+              UIOptions={{
+                canvasActions: {
+                  saveToActiveFile: false,
+                  saveAsImage: false,
+                  export: false,
+                },
+              }}
               viewModeEnabled={presenting || readOnly}
               excalidrawAPI={(value) => {
                 api.current = value;
@@ -1155,7 +1278,29 @@ function App() {
                 )
                   changed(next);
               }}
-            />
+            >
+              <MainMenu>
+                <MainMenu.DefaultItems.LoadScene />
+                <MainMenu.DefaultItems.SearchMenu />
+                <MainMenu.DefaultItems.Help />
+                <MainMenu.DefaultItems.ClearCanvas />
+                <MainMenu.Separator />
+                <MainMenu.ItemLink
+                  href="https://github.com/layzerff/excalidraw"
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    run(() => bridge.invoke('openProject'));
+                  }}
+                >
+                  GitHub
+                </MainMenu.ItemLink>
+                <MainMenu.Separator />
+                <MainMenu.DefaultItems.ToggleTheme
+                  onSelect={(theme) => setCanvasDark(theme === 'dark')}
+                />
+                <MainMenu.DefaultItems.ChangeCanvasBackground />
+              </MainMenu>
+            </Excalidraw>
           ) : (
             <div className="empty">
               <span>▧</span>
@@ -1570,6 +1715,7 @@ function App() {
           >
             <Excalidraw
               langCode="zh-CN"
+              theme={canvasDark ? 'dark' : 'light'}
               viewModeEnabled={!pen}
               key={currentScene}
               handleKeyboardGlobally

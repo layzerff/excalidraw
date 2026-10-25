@@ -161,11 +161,11 @@ try {
   await expect(page.locator('.file-menu')).toHaveCount(0);
   await expect(page.locator('.root svg path')).toHaveAttribute(
     'stroke-width',
-    '2.5',
+    '1.8',
   );
   await expect(
     row('项目设计').locator('.folder-toggle svg path'),
-  ).toHaveAttribute('stroke-width', '3');
+  ).toHaveAttribute('stroke-width', '1.8');
   await page
     .locator('label')
     .filter({ has: page.locator('[data-testid="toolbar-rectangle"]') })

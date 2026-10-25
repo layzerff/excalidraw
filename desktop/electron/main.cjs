@@ -1,4 +1,11 @@
-const { app, BrowserWindow, ipcMain, dialog, session } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  session,
+  shell,
+} = require('electron');
 const { join } = require('node:path');
 const { pathToFileURL } = require('node:url');
 const fs = require('node:fs');
@@ -66,6 +73,8 @@ else {
           throw new Error('拒绝未知来源');
       };
       const operations = {
+        openProject: () =>
+          shell.openExternal('https://github.com/layzerff/excalidraw'),
         list: () => store.list(),
         read: (id) => ({
           ...store.read(id),

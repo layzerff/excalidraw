@@ -50,12 +50,15 @@ async function dragScene(page, source, target, bottom = false) {
   const from = await source.boundingBox(),
     to = await target.boundingBox();
   await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.waitForTimeout(80);
   await page.mouse.down();
+  await page.waitForTimeout(80);
   await page.mouse.move(to.x + 60, to.y + (bottom ? to.height - 3 : 2), {
-    steps: 15,
+    steps: 25,
   });
   await page.waitForTimeout(100);
   await page.mouse.up();
+  await page.waitForTimeout(100);
 }
 try {
   let page = await launch();
@@ -222,10 +225,10 @@ try {
   await expect(page.locator('header .scene-panel-toggle')).toHaveCount(0);
   const originalElements = (await data(page)).elements;
   await page
-    .getByRole('button', { name: '▧ 我的第一张白板', exact: true })
+    .getByRole('button', { name: '我的第一张白板', exact: true })
     .click();
   await page
-    .getByRole('button', { name: '▧ 我的第一张白板', exact: true })
+    .getByRole('button', { name: '我的第一张白板', exact: true })
     .click();
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await page.getByRole('button', { name: '▶ 演示', exact: true }).click();
@@ -386,7 +389,7 @@ try {
   await page.getByRole('button', { name: '确定', exact: true }).click();
   await expect(page.locator('header strong')).toHaveText('第二张白板');
   await page
-    .getByRole('button', { name: '▧ 我的第一张白板', exact: true })
+    .getByRole('button', { name: '我的第一张白板', exact: true })
     .click();
   await expect(page.locator('.scene')).toHaveCount(2);
   const exported = join(profile, 'document.canvas.json'),
@@ -471,7 +474,9 @@ try {
   await page.getByRole('menuitem', { name: '新建白板', exact: true }).click();
   await page.locator('.modal input').fill('字体与场景演示');
   await page.getByRole('button', { name: '确定', exact: true }).click();
-  await expect(page.locator('header select')).toHaveCount(0);
+  await expect(page.locator('header select')).toHaveCount(1);
+  await expect(page.getByRole('combobox', { name: '界面主题', exact: true }))
+    .toHaveValue('github');
   await page
     .locator('label')
     .filter({ has: page.locator('[data-testid="toolbar-text"]') })
@@ -613,7 +618,7 @@ try {
     await project
       .locator('.node-title')
       .evaluate((el) => getComputedStyle(el).fontWeight),
-  ).toBe('650');
+  ).toBe('600');
   await project.click({ button: 'right' });
   await page.getByRole('menuitem', { name: '新建文件夹', exact: true }).click();
   await page.locator('.modal input').fill('子资料');

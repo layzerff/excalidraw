@@ -1,0 +1,129 @@
+export const THEMES = {
+  github: {
+    label: 'GitHub',
+    dark: false,
+    radius: 6,
+    stroke: 1.8,
+    tokens: {
+      surface: '#ffffff',
+      subtle: '#f6f8fa',
+      hover: '#eff2f5',
+      border: '#d1d9e0',
+      muted: '#59636e',
+      text: '#1f2328',
+      accent: '#0969da',
+      selected: '#ddf4ff',
+      ancestor: '#eaf2fb',
+      strong: '#0550ae',
+      primary: '#1f883d',
+      'primary-hover': '#1a7f37',
+      'primary-text': '#ffffff',
+      danger: '#d1242f',
+      'danger-bg': '#ffebe9',
+      'danger-strong': '#a40e26',
+      shadow: '0 8px 24px #1f23281f',
+    },
+  },
+  reddit: {
+    label: 'Reddit',
+    dark: false,
+    radius: 16,
+    stroke: 2.1,
+    tokens: {
+      surface: '#ffffff',
+      subtle: '#f8f9fa',
+      hover: '#e9eef0',
+      border: '#d9e0e3',
+      muted: '#52666f',
+      text: '#0f1a1c',
+      accent: '#d93900',
+      selected: '#ffede5',
+      ancestor: '#fff5f0',
+      strong: '#9f2b00',
+      primary: '#d93900',
+      'primary-hover': '#ae2c00',
+      'primary-text': '#ffffff',
+      danger: '#b91c32',
+      'danger-bg': '#ffebee',
+      'danger-strong': '#970f24',
+      shadow: '0 8px 24px #0f1a1c24',
+    },
+  },
+  vscode: {
+    label: 'VS Code',
+    dark: true,
+    radius: 2,
+    stroke: 1.6,
+    tokens: {
+      surface: '#1f1f1f',
+      subtle: '#181818',
+      hover: '#2a2d2e',
+      border: '#454545',
+      muted: '#a7a7a7',
+      text: '#cccccc',
+      accent: '#4daafc',
+      selected: '#04395e',
+      ancestor: '#252d33',
+      strong: '#ffffff',
+      primary: '#0078d4',
+      'primary-hover': '#005a9e',
+      'primary-text': '#ffffff',
+      danger: '#f48771',
+      'danger-bg': '#432522',
+      'danger-strong': '#ffb4a8',
+      shadow: '0 8px 24px #00000066',
+    },
+  },
+  notion: {
+    label: 'Notion',
+    dark: false,
+    radius: 4,
+    stroke: 1.6,
+    tokens: {
+      surface: '#ffffff',
+      subtle: '#f7f7f5',
+      hover: '#efefec',
+      border: '#deded9',
+      muted: '#73726e',
+      text: '#37352f',
+      accent: '#2f6b9a',
+      selected: '#e5eff7',
+      ancestor: '#efefec',
+      strong: '#37352f',
+      primary: '#37352f',
+      'primary-hover': '#22211e',
+      'primary-text': '#ffffff',
+      danger: '#c03b3b',
+      'danger-bg': '#fbe9e7',
+      'danger-strong': '#9d2525',
+      shadow: '0 6px 18px #37352f1a',
+    },
+  },
+};
+export function themeId(value) {
+  return Object.hasOwn(THEMES, value) ? value : 'github';
+}
+export function themeStyle(value) {
+  const theme = THEMES[themeId(value)];
+  const tree = {
+    github: ['#edf3f9', '#f3f6f8', '#a6bdd6'],
+    reddit: ['#f9efea', '#faf7f5', '#d5a28d'],
+    vscode: ['#2c3339', '#20252a', '#587083'],
+    notion: ['#eeefed', '#f4f4f1', '#b9c0bd'],
+  }[themeId(value)];
+  return Object.fromEntries([
+    ...Object.entries(theme.tokens).map(([key, color]) => [`--${key}`, color]),
+    ['--control-radius', `${theme.radius}px`],
+    ['--tree-selected', tree[0]],
+    ['--tree-ancestor', tree[1]],
+    ['--tree-marker', tree[2]],
+  ]);
+}
+export function resetZoomView(state) {
+  const zoom = state.zoom.value;
+  return {
+    zoom: { value: 1 },
+    scrollX: state.scrollX + state.width / 2 - state.width / (2 * zoom),
+    scrollY: state.scrollY + state.height / 2 - state.height / (2 * zoom),
+  };
+}
