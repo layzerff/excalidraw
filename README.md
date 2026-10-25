@@ -2,6 +2,8 @@
 
 基于官方 MIT 授权的 Excalidraw React 组件，使用 React + Electron + SQLite 构建 Windows/macOS 本地优先白板。在保留原生绘图体验的基础上，增加本地文档管理、场景导航与全屏演示。
 
+[下载 0.4.0 开发预览版（macOS / Windows）](https://github.com/layzerff/excalidraw/releases/tag/v0.4.0) · [0.4.0 安装包对应源码](https://github.com/layzerff/excalidraw/tree/c15b4396b52e1566a4da2e3e047cff531b2c1075/desktop)
+
 [开发源码与运行说明](https://github.com/layzerff/excalidraw/tree/codex/local-canvas-p0/desktop) · [修改清单](https://github.com/layzerff/excalidraw/blob/codex/local-canvas-p0/desktop/NEXT-ITERATION.md) · [更新记录](https://github.com/layzerff/excalidraw/blob/codex/local-canvas-p0/desktop/CHANGELOG.md) · [验证记录](https://github.com/layzerff/excalidraw/blob/codex/local-canvas-p0/desktop/VALIDATION.md) · [原版介绍](README.upstream.md)
 
 ## 与原版的区别
