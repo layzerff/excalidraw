@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   Excalidraw,
@@ -141,6 +141,26 @@ function App() {
   const [storageDialog, setStorageDialog] = useState(false);
   const [storagePending, setStoragePending] = useState(false);
   const [fileMenu, setFileMenu] = useState(null);
+  const [menuPending, setMenuPending] = useState(false);
+  const [menuError, setMenuError] = useState('');
+  const menuPanel = useRef(null),
+    menuTrigger = useRef(null);
+  const closeFileMenu = () => {
+    setFileMenu(null);
+    if (menuTrigger.current?.isConnected) menuTrigger.current.focus();
+  };
+  useLayoutEffect(() => {
+    if (!fileMenu) return;
+    const field = menuPanel.current?.querySelector(
+      fileMenu.mode === 'rename'
+        ? 'input'
+        : fileMenu.mode === 'move'
+          ? 'select'
+          : '[role="menuitem"], button',
+    );
+    field?.focus();
+    if (field?.tagName === 'INPUT') field.select();
+  }, [fileMenu?.node?.id, fileMenu?.mode]);
   const [fileInfo, setFileInfo] = useState(null);
   const [collapsedFolders, setCollapsedFolders] = useState([]);
   const [dropFolder, setDropFolder] = useState(undefined);
@@ -669,11 +689,35 @@ function App() {
     );
   const openFileMenu = (event, node = null) => {
     event.preventDefault();
+    const bounds = event.currentTarget.getBoundingClientRect();
+    menuTrigger.current = event.currentTarget;
+    setMenuError('');
     setFileMenu({
       node,
-      x: Math.min(event.clientX, ownerWindow.innerWidth - 230),
-      y: Math.min(event.clientY, ownerWindow.innerHeight - 290),
+      mode: 'actions',
+      x: Math.min(event.clientX || bounds.right, ownerWindow.innerWidth - 292),
+      y: Math.min(
+        event.clientY || bounds.bottom,
+        ownerWindow.innerHeight - 340,
+      ),
     });
+  };
+  const menuMode = (mode) => {
+    setMenuError('');
+    setFileMenu({ ...fileMenu, mode });
+  };
+  const performMenuAction = async (action) => {
+    if (menuPending) return;
+    setMenuPending(true);
+    setMenuError('');
+    try {
+      await action();
+      closeFileMenu();
+    } catch (error) {
+      setMenuError(error.message);
+    } finally {
+      setMenuPending(false);
+    }
   };
   const moveNode = async (id, parent) => {
     flush();
@@ -873,6 +917,8 @@ function App() {
             <button
               title="操作"
               aria-label={`${n.title} 操作`}
+              aria-haspopup="menu"
+              aria-expanded={fileMenu?.node?.id === n.id}
               onClick={(event) => openFileMenu(event, n)}
             >
               ···
@@ -908,7 +954,7 @@ function App() {
         <div className="brand">
           <img className="logo" src="./app-icon.png" alt="Canvas 标志" />
           <div>
-            Local Canvas<small>本地无限画布 · v0.2.2</small>
+            Local Canvas<small>本地无限画布 · v0.3.0</small>
           </div>
         </div>
         <div className="section-title">
@@ -1676,45 +1722,136 @@ function App() {
       {fileMenu && (
         <div
           className="file-menu-backdrop"
-          onPointerDown={() => setFileMenu(null)}
+          onPointerDown={() => !menuPending && closeFileMenu()}
           onContextMenu={(event) => {
             event.preventDefault();
             setFileMenu(null);
           }}
         >
           <section
+            ref={menuPanel}
             className="file-menu"
-            role="menu"
+            role={fileMenu.mode === 'actions' ? 'menu' : 'dialog'}
+            aria-label={`${fileMenu.node?.title || '根目录'} 操作`}
             style={{
               left: Math.max(8, fileMenu.x),
               top: Math.max(8, fileMenu.y),
             }}
             onPointerDown={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === 'Tab') {
+                const fields = [
+                  ...event.currentTarget.querySelectorAll(
+                    'button:not(:disabled), input:not(:disabled), select:not(:disabled)',
+                  ),
+                ];
+                if (!fields.length) return;
+                const first = fields[0],
+                  last = fields.at(-1);
+                if (
+                  event.shiftKey &&
+                  root.ownerDocument.activeElement === first
+                ) {
+                  event.preventDefault();
+                  last.focus();
+                } else if (
+                  !event.shiftKey &&
+                  root.ownerDocument.activeElement === last
+                ) {
+                  event.preventDefault();
+                  first.focus();
+                }
+              }
+              if (event.key === 'Escape') {
+                event.stopPropagation();
+                if (!menuPending) closeFileMenu();
+              }
+              if (
+                fileMenu.mode !== 'actions' ||
+                !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)
+              )
+                return;
+              event.preventDefault();
+              const items = [
+                ...event.currentTarget.querySelectorAll('[role="menuitem"]'),
+              ];
+              const index = items.indexOf(root.ownerDocument.activeElement);
+              const next =
+                event.key === 'Home'
+                  ? 0
+                  : event.key === 'End'
+                    ? items.length - 1
+                    : (index +
+                        (event.key === 'ArrowDown' ? 1 : -1) +
+                        items.length) %
+                      items.length;
+              items[next]?.focus();
+            }}
           >
-            <small>{fileMenu.node?.title || '根目录'}</small>
-            {(!fileMenu.node || fileMenu.node.kind === 'folder') && (
+            <div className="file-menu-heading">
+              <span>{fileMenu.node?.title || '根目录'}</span>
+              <small>
+                {fileMenu.node?.kind === 'document' ? '白板' : '文件夹'}
+              </small>
+            </div>
+            {fileMenu.mode === 'actions' &&
+              (!fileMenu.node || fileMenu.node.kind === 'folder') && (
+                <>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      create('document', fileMenu.node?.id || null);
+                      setFileMenu(null);
+                    }}
+                  >
+                    新建白板
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      create('folder', fileMenu.node?.id || null);
+                      setFileMenu(null);
+                    }}
+                  >
+                    新建文件夹
+                  </button>
+                </>
+              )}
+            {fileMenu.mode === 'actions' && fileMenu.node && (
               <>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    create('document', fileMenu.node?.id || null);
-                    setFileMenu(null);
-                  }}
-                >
-                  新建白板
+                {fileMenu.node.kind === 'folder' && <hr />}
+                <button role="menuitem" onClick={() => menuMode('rename')}>
+                  重命名
+                  <span className="menu-chevron" aria-hidden="true">
+                    ›
+                  </span>
                 </button>
+                <button role="menuitem" onClick={() => menuMode('move')}>
+                  移动到文件夹
+                  <span className="menu-chevron" aria-hidden="true">
+                    ›
+                  </span>
+                </button>
+                <hr />
                 <button
                   role="menuitem"
-                  onClick={() => {
-                    create('folder', fileMenu.node?.id || null);
-                    setFileMenu(null);
-                  }}
+                  className="danger-action"
+                  onClick={() => menuMode('trash')}
                 >
-                  新建文件夹
+                  移入回收站
                 </button>
               </>
             )}
-            {fileMenu.node && (
+            {fileMenu.mode !== 'actions' && (
+              <button
+                className="menu-back"
+                disabled={menuPending}
+                onClick={() => menuMode('actions')}
+              >
+                ‹ 返回操作
+              </button>
+            )}
+            {fileMenu.mode === 'rename' && fileMenu.node && (
               <>
                 <form
                   onSubmit={(event) => {
@@ -1723,12 +1860,11 @@ function App() {
                       .get('title')
                       .trim();
                     if (title)
-                      run(async () => {
+                      performMenuAction(async () => {
                         await bridge.invoke('rename', fileMenu.node.id, title);
                         await refresh();
                         if (doc?.id === fileMenu.node.id)
                           setDoc({ ...doc, title });
-                        setFileMenu(null);
                       });
                   }}
                 >
@@ -1739,22 +1875,47 @@ function App() {
                       aria-label="文件名称"
                       defaultValue={fileMenu.node.title}
                       maxLength={200}
+                      required
+                      disabled={menuPending}
                     />
                   </label>
-                  <button type="submit">确定</button>
+                  <div className="menu-form-actions">
+                    <button
+                      type="button"
+                      disabled={menuPending}
+                      onClick={closeFileMenu}
+                    >
+                      取消
+                    </button>
+                    <button
+                      className="primary-action"
+                      type="submit"
+                      disabled={menuPending}
+                    >
+                      保存名称
+                    </button>
+                  </div>
                 </form>
+              </>
+            )}
+            {fileMenu.mode === 'move' && fileMenu.node && (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const parent =
+                    new ownerWindow.FormData(event.currentTarget).get(
+                      'parent',
+                    ) || null;
+                  performMenuAction(() => moveNode(fileMenu.node.id, parent));
+                }}
+              >
                 <label>
                   移动到
                   <select
+                    name="parent"
                     aria-label="移动到文件夹"
-                    value={fileMenu.node.parent || ''}
-                    onChange={(event) => {
-                      const parent = event.target.value || null;
-                      run(async () => {
-                        await moveNode(fileMenu.node.id, parent);
-                        setFileMenu(null);
-                      });
-                    }}
+                    defaultValue={fileMenu.node.parent || ''}
+                    disabled={menuPending}
                   >
                     <option value="">根目录</option>
                     {nodes
@@ -1771,18 +1932,53 @@ function App() {
                       ))}
                   </select>
                 </label>
-                <button
-                  role="menuitem"
-                  onClick={() =>
-                    run(async () => {
-                      await remove(fileMenu.node);
-                      setFileMenu(null);
-                    })
-                  }
-                >
-                  移入回收站
-                </button>
-              </>
+                <p className="menu-help">
+                  只调整工作区目录，不移动磁盘上的关联文件。
+                </p>
+                <div className="menu-form-actions">
+                  <button
+                    type="button"
+                    disabled={menuPending}
+                    onClick={closeFileMenu}
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="submit"
+                    className="primary-action"
+                    disabled={menuPending}
+                  >
+                    移动到此处
+                  </button>
+                </div>
+              </form>
+            )}
+            {fileMenu.mode === 'trash' && (
+              <div className="menu-confirm">
+                <h3>移入回收站？</h3>
+                <p>
+                  可在工作区回收站恢复。磁盘上的关联文件不会被删除；非空文件夹需先移出内容。
+                </p>
+                <div className="menu-form-actions">
+                  <button disabled={menuPending} onClick={closeFileMenu}>
+                    取消
+                  </button>
+                  <button
+                    className="danger-button"
+                    disabled={menuPending}
+                    onClick={() =>
+                      performMenuAction(() => remove(fileMenu.node))
+                    }
+                  >
+                    移入回收站
+                  </button>
+                </div>
+              </div>
+            )}
+            {menuError && (
+              <p className="menu-error" role="alert">
+                {menuError}
+              </p>
             )}
           </section>
         </div>

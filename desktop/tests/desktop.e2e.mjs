@@ -642,8 +642,12 @@ try {
   await expect(managed.locator('.tree-guide')).toHaveCount(2);
   await managed.click({ button: 'right' });
   await page
+    .getByRole('menuitem', { name: '移动到文件夹', exact: true })
+    .click();
+  await page
     .getByRole('combobox', { name: '移动到文件夹', exact: true })
     .selectOption('');
+  await page.getByRole('button', { name: '移动到此处', exact: true }).click();
   await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(page.locator('.folder-selected')).toHaveCount(0);
   await managed.dragTo(project);
@@ -687,8 +691,12 @@ try {
     .filter({ hasText: '字体与场景演示' });
   await displayRow.click({ button: 'right' });
   await page
+    .getByRole('menuitem', { name: '移动到文件夹', exact: true })
+    .click();
+  await page
     .getByRole('combobox', { name: '移动到文件夹', exact: true })
     .selectOption({ label: '项目资料 / 子资料' });
+  await page.getByRole('button', { name: '移动到此处', exact: true }).click();
   await expect(page.locator('.folder-selected')).toHaveCount(2);
   expect(
     await page

@@ -87,7 +87,11 @@ Retain the repository root MIT `LICENSE` and `dist/EXCALIDRAW-LICENSE.txt`. `npm
 
 Official references: https://docs.excalidraw.com/docs/@excalidraw/excalidraw/api/props/excalidraw-api and https://github.com/excalidraw/excalidraw/blob/master/LICENSE.
 
-## Desktop 0.2.0 — file workflow
+## Desktop 0.3.0 — file workflow and UI
+
+The shell uses a GitHub/Primer-inspired light palette and grouped action menus. Row menus contain actions only; Rename and Move open separate anchored forms with Cancel and explicit confirmation. Choosing a target folder alone does not move a board. Trash has its own confirmation and retains recoverability. Native drawing colors, handwriting data, storage formats and presentation functionality are unchanged. `node tests/workspace.e2e.mjs` exercises the menu and workspace flows; the full regression is `npm run test:e2e`.
+
+Mac icon generation (`node scripts/icons.mjs`, macOS with Swift/AppKit and sips) uses `build/app-icon-mac.png` for legacy ICNS optical layout; the in-app PNG and Windows ICO retain the original full artwork. Generated assets are committed, so Windows packaging does not require Swift. See LOGO.md for the source and platform layout details.
 
 Right-click the workspace root or an existing folder to create boards/folders. Folder names are larger/bolder; the chevron collapses children. Row context menus stay at the click location, and drag-and-drop moves items into folders or back to the root. Logical workspace moves do not move external files.
 

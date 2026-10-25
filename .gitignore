@@ -16,6 +16,7 @@ build
 !desktop/build/
 desktop/build/*
 !desktop/build/app-icon.png
+!desktop/build/app-icon-mac.png
 !desktop/build/app-icon.ico
 !desktop/build/app-icon.icns
 dist

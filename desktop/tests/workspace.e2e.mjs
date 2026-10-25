@@ -106,6 +106,59 @@ try {
     }),
   ).toEqual([0, 0, 0, 0]);
   mkdirSync('test-results', { recursive: true });
+  await row('项目设计')
+    .getByRole('button', { name: '项目设计 操作', exact: true })
+    .press('Enter');
+  await expect(page.getByRole('menu')).toBeVisible();
+  expect((await page.locator('.file-menu').boundingBox()).x).toBeGreaterThan(
+    50,
+  );
+  await expect(page.locator('.file-menu input, .file-menu select')).toHaveCount(
+    0,
+  );
+  await expect(page.locator('.file-menu hr')).toHaveCount(2);
+  await expect(
+    page.getByRole('menuitem', { name: '移入回收站', exact: true }),
+  ).toHaveClass(/danger-action/);
+  await page
+    .locator('.file-menu')
+    .screenshot({ path: 'test-results/menu-actions.png' });
+  await page.getByRole('menuitem', { name: '重命名', exact: true }).click();
+  await expect(
+    page.getByRole('textbox', { name: '文件名称', exact: true }),
+  ).toBeFocused();
+  await expect(page.locator('.file-menu [role="menuitem"]')).toHaveCount(0);
+  await page
+    .getByRole('textbox', { name: '文件名称', exact: true })
+    .fill('项目设计新版');
+  await page
+    .locator('.file-menu')
+    .screenshot({ path: 'test-results/menu-rename.png' });
+  await page.getByRole('button', { name: '保存名称', exact: true }).click();
+  await expect(row('项目设计新版')).toBeVisible();
+  await row('项目设计新版').click({ button: 'right' });
+  await page.getByRole('menuitem', { name: '移入回收站', exact: true }).click();
+  await expect(page.locator('.menu-confirm')).toContainText(
+    '磁盘上的关联文件不会被删除',
+  );
+  await page.getByRole('button', { name: '移入回收站', exact: true }).click();
+  await expect(page.locator('.menu-error')).toBeVisible(); // Non-empty folder is protected.
+  await page.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(row('项目设计新版')).toBeVisible();
+  await row('参考资料').click({ button: 'right' });
+  await expect(
+    page.getByRole('menuitem', { name: '新建白板', exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press('End');
+  await expect(
+    page.getByRole('menuitem', { name: '移入回收站', exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(
+    page.getByRole('menuitem', { name: '新建白板', exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.file-menu')).toHaveCount(0);
   await expect(page.locator('.root svg path')).toHaveAttribute(
     'stroke-width',
     '2.5',
@@ -207,8 +260,16 @@ try {
   await expect(page.locator('.presentation-controls')).toHaveCount(0);
   await row('产品方案').click({ button: 'right' });
   await page
+    .getByRole('menuitem', { name: '移动到文件夹', exact: true })
+    .click();
+  await page
     .getByRole('combobox', { name: '移动到文件夹', exact: true })
     .selectOption({ label: '参考资料' });
+  await expect(page.locator('.folder-selected')).toHaveCount(2); // Choice alone never moves.
+  await page
+    .locator('.file-menu')
+    .screenshot({ path: 'test-results/menu-move.png' });
+  await page.getByRole('button', { name: '移动到此处', exact: true }).click();
   await expect(selected).toHaveCount(1);
   await expect(row('参考资料')).toHaveClass(/folder-selected/);
   await expect(row('项目设计')).not.toHaveClass(/folder-selected/);

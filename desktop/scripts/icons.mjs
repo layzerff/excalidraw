@@ -3,6 +3,13 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 const directory = 'build/app-icon.iconset';
 mkdirSync(directory, { recursive: true });
+execFileSync('swift', [
+  '-module-cache-path',
+  '/private/tmp/local-canvas-icon-modules',
+  'scripts/mac-icon.swift',
+  'build/app-icon.png',
+  'build/app-icon-mac.png',
+]);
 for (const size of [16, 32, 64, 128, 256, 512, 1024]) {
   const name =
     size === 1024 ? 'icon_512x512@2x.png' : `icon_${size}x${size}.png`;
@@ -10,7 +17,7 @@ for (const size of [16, 32, 64, 128, 256, 512, 1024]) {
     '-z',
     String(size),
     String(size),
-    'build/app-icon.png',
+    'build/app-icon-mac.png',
     '--out',
     `${directory}/${name}`,
   ]);
@@ -20,12 +27,15 @@ for (const size of [16, 32, 128, 256]) {
     '-z',
     String(size * 2),
     String(size * 2),
-    'build/app-icon.png',
+    'build/app-icon-mac.png',
     '--out',
     `${directory}/icon_${size}x${size}@2x.png`,
   ]);
 }
 const chunks = [
+  ['icp4', 16],
+  ['icp5', 32],
+  ['icp6', 64],
   ['ic07', 128],
   ['ic08', 256],
   ['ic09', 512],
