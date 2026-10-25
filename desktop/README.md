@@ -21,6 +21,9 @@ npm start
 
 ## Included
 
+- Three scene entry points: draw a fixed region, link currently selected elements/groups, or capture the current view. Linked scenes track official geometry bounds as content moves/resizes/rotates; group membership and element IDs persist with documents and workspace backups. If all linked content is deleted, the last bounds remain; undo restores tracking. Redrawing a linked scene converts it into a fixed region.
+- Trash supports restore and a separately confirmed Empty Trash action. Purging is transactional and removes trashed nodes, their revision rows and file-link settings. Associated disk files and existing backups remain untouched.
+
 - Unmodified official Excalidraw editor: drawing, text, arrows, freehand, frames, library and standard editor controls. Fonts are bundled locally. A library is saved with its whiteboard.
 - Nested file tree, document/folder creation, rename, move, document switching and recoverable deletion. A folder must be empty before deletion. No document-count or folder-count quota.
 - SQLite WAL with FULL synchronous commits, revision-conflict protection, 500 ms debounced saves, at most 2 s between saves during continuous edits, synchronous flush before switching and closing. Failed saves remain dirty and show an error. OS/process crashes can lose changes not yet committed, at most the debounce/max-wait window under normal operation.
@@ -87,9 +90,9 @@ Retain the repository root MIT `LICENSE` and `dist/EXCALIDRAW-LICENSE.txt`. `npm
 
 Official references: https://docs.excalidraw.com/docs/@excalidraw/excalidraw/api/props/excalidraw-api and https://github.com/excalidraw/excalidraw/blob/master/LICENSE.
 
-## Desktop 0.4.0 — appearance and navigation
+## Appearance and navigation
 
-Choose GitHub, Reddit, VS Code or Notion in the header. Each style has matching shell colors, directory icons, radii and subdued tree highlights; the fixed 20px colored palette icon remains identical. Appearance and independent left/right sidebar preferences survive restart. The heading/status and action group align separately. Double middle click on the drawing surface returns to 100% while preserving the center and does not autosave.
+Choose GitHub, Reddit, VS Code or Notion in the header. Each style has matching shell colors, directory icons, radii and subdued tree highlights; the fixed 20px colored palette icon remains identical. Appearance and independent left/right sidebar preferences survive restart. The heading/status and action group align separately. Double middle click on the drawing surface fits all whiteboard content into the viewport without autosaving. Indented row highlights stay to the right of their guide line, without an inset crescent marker.
 
 The custom native menu keeps Open, Search, Help, Clear, canvas dark mode/background and the project GitHub link. Save/Save As remain in the workspace; the unified export icon remains top right. Help's four external header links are hidden; native platform-specific shortcut labels remain. Cmd/Ctrl+S saves, Cmd/Ctrl+Shift+S opens Save As and Cmd/Ctrl+Shift+E opens unified export. Mac labels were checked on the packaged app; Windows labels were checked with a Win32 navigator simulation, not a Windows runtime test. `node tests/appearance.e2e.mjs` covers these changes and verifies that theme changes do not modify whiteboard data.
 
