@@ -1,5 +1,14 @@
 # Milestone validation — 2026-10-17
 
+## 0.4.0 — 2026-10-25
+
+- Production build and all 15 unit/resource checks passed. New checks cover four complete theme definitions, safe preference fallback, readable text contrast and center-preserving 100% zoom.
+- Actual final Mac arm64 packaged application passed `appearance.e2e.mjs`: four themes without document/revision mutations, per-theme directory icons, identical fixed 20px palette, aligned header controls, computed subdued tree backgrounds, independent sidebars and restart persistence, real double-middle-click 100% zoom without autosave, custom menu and removal of Help header links. Mac shortcut labels and simulated Win32 navigator labels were checked; the latter is not a Windows runtime test.
+- Packaged workspace regression passed directory ancestors, move/restart, menus/forms, indentation, transparent logo corners, read-only pointer/Delete protection and automatic loop wrap/stop/persistence. The final tree highlight priority correction was separately checked by computed styles and screenshots in all four themes.
+- Complete packaged regression is **not fully green**: attempts stopped at the previously observed native temporary-ink undo assertion, and two attempts at the reverse fullscreen scene drag. A subsequent slower real-pointer drag run passed the two directions but stopped at native ink undo. These failures remain open; no claim is made that this version fixes them. A separate diagnostic run excluding only the failing native-ink undo/redo block passed the later flows: native main-editor undo/redo, library import, file/export/import, PDF/region outputs, external-file conflict protection, backup/restore, storage migration, close flush and restart. That diagnostic pass cannot substitute for a full pass.
+- Both Windows x64 NSIS and portable outer archives passed 7-Zip tests; Mac deep/strict ad-hoc signature passed. Bundled versions are 0.4.0, Mac ICNS matches source, and all 193 packaged JS/CSS files match byte-for-byte across Mac/Windows. MIT and third-party notices are present. No Windows runtime, Authenticode signing or Apple notarization.
+- README theme and menu images are captured from the final running packaged application. The 0.4.0 logo silhouette is refined and alpha bounds are checked, but no fresh Finder side-by-side comparison was completed for this artwork.
+
 ## 0.3.0 — 2026-10-25
 
 - Production build and 12 unit/resource checks passed, including regular/retina ICNS entries and decoded RGBA bounds for the Mac platform icon (transparent padding and approximately 832px artwork).

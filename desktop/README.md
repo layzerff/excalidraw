@@ -27,7 +27,7 @@ npm start
 - Restore last active document and viewport on restart. Every startup creates a dated workspace snapshot if that day's snapshot does not yet exist. Previous document snapshots are retained in SQLite (up to 30 per document, at most one per minute); the revision browser is a later milestone.
 - Import `.excalidraw` or full `.canvas.json`; export both. Standard `.excalidraw` excludes custom navigation scenes; full documents and workspace backups include scenes, images and document library.
 - Workspace backup to JSON; restore validates the tree and imports into a new folder with fresh document IDs. Existing documents remain intact. Active-document preference is not replaced when merging backups.
-- Scene Manager: manually draw a region, capture current viewport, rename, drag to reorder, keyboard-accessible move-up button, redraw bounds, delete scene. Default 2.2-second navigation with 1.2/3.5/5-second alternatives, via official `updateScene` viewport fields and `CaptureUpdateAction.NEVER`. Pointer, wheel or Escape interrupts the animation.
+- Scene Manager: manually draw a region, capture current viewport, rename, drag to reorder, context-menu move-up, redraw bounds and delete scene. Editing navigation is fixed at 0.5 seconds; presentation offers 0.5/1/1.5/2 seconds, via official `updateScene` viewport fields and `CaptureUpdateAction.NEVER`. Pointer, wheel or Escape interrupts the animation.
 - Scene updates: 0.5-second option, compact rows, insertion markers, edge scrolling and a persistent split-panel toggle. Fullscreen presentation provides arrows, temporary ink with color/width, and clear/exit controls. Ink clears on scene changes and exit without modifying elements.
 - PDF: entire board or one cropped page per scene, exported as high-resolution PNGs in landscape A4 pages (8192-pixel longest edge cap, up to 200 pages). Text is rasterized, not searchable. JSON remains the editable backup format.
 - Fonts/library: bundled Excalifont, classic Virgil and Chinese Xiaolai fallback; font selection uses the original canvas font picker. Local `.excalidrawlib` import merges through the official API. Arbitrary custom font upload remains pending.
@@ -78,7 +78,7 @@ macOS development builds now receive an ad-hoc integrity signature before archiv
 - Renderer has no Node integration; preload exposes only allowlisted operations. IPC accepts only the current main frame. Remote HTTP/WebSocket requests, remote embedded frames and popup windows are blocked. Cloud collaboration, online library browsing, remote embeds and other network-dependent editor features are unavailable in this offline milestone.
 - Large boards/image-heavy workloads, IME text input, touch/pen, clipboard image permissions and exhaustive native feature regression require wider device testing.
 - Scene bounds currently adjust by redrawing the area; draggable edge handles/numeric precision controls are not implemented.
-- Folder trees are expanded; collapse/search, revision browser and backup-retention settings are later improvements.
+- Folder trees support collapse; tree search, revision browser and backup-retention settings are later improvements.
 - Dependency audit after compatible overrides: 4 low production alerts in the Mermaid/KaTeX chain; no high/moderate production alerts at initial validation. Development dependencies have additional moderate alerts. Do not run forced dependency downgrades without regression testing.
 
 ## Licensing
@@ -87,12 +87,18 @@ Retain the repository root MIT `LICENSE` and `dist/EXCALIDRAW-LICENSE.txt`. `npm
 
 Official references: https://docs.excalidraw.com/docs/@excalidraw/excalidraw/api/props/excalidraw-api and https://github.com/excalidraw/excalidraw/blob/master/LICENSE.
 
-## Desktop 0.3.0 — file workflow and UI
+## Desktop 0.4.0 — appearance and navigation
+
+Choose GitHub, Reddit, VS Code or Notion in the header. Each style has matching shell colors, directory icons, radii and subdued tree highlights; the fixed 20px colored palette icon remains identical. Appearance and independent left/right sidebar preferences survive restart. The heading/status and action group align separately. Double middle click on the drawing surface returns to 100% while preserving the center and does not autosave.
+
+The custom native menu keeps Open, Search, Help, Clear, canvas dark mode/background and the project GitHub link. Save/Save As remain in the workspace; the unified export icon remains top right. Help's four external header links are hidden; native platform-specific shortcut labels remain. Cmd/Ctrl+S saves, Cmd/Ctrl+Shift+S opens Save As and Cmd/Ctrl+Shift+E opens unified export. Mac labels were checked on the packaged app; Windows labels were checked with a Win32 navigator simulation, not a Windows runtime test. `node tests/appearance.e2e.mjs` covers these changes and verifies that theme changes do not modify whiteboard data.
+
+## File workflow and UI
 
 The shell uses a GitHub/Primer-inspired light palette and grouped action menus. Row menus contain actions only; Rename and Move open separate anchored forms with Cancel and explicit confirmation. Choosing a target folder alone does not move a board. Trash has its own confirmation and retains recoverability. Native drawing colors, handwriting data, storage formats and presentation functionality are unchanged. `node tests/workspace.e2e.mjs` exercises the menu and workspace flows; the full regression is `npm run test:e2e`.
 
 Mac icon generation (`node scripts/icons.mjs`, macOS with Swift/AppKit and sips) uses `build/app-icon-mac.png` for legacy ICNS optical layout; the in-app PNG and Windows ICO retain the original full artwork. Generated assets are committed, so Windows packaging does not require Swift. See LOGO.md for the source and platform layout details.
 
-Right-click the workspace root or an existing folder to create boards/folders. Folder names are larger/bolder; the chevron collapses children. Row context menus stay at the click location, and drag-and-drop moves items into folders or back to the root. Logical workspace moves do not move external files.
+Right-click the workspace root or an existing folder to create boards/folders. Directory text is consistently 13px, with folder names at weight 600; the chevron collapses children. Row context menus stay at the click location, and drag-and-drop moves items into folders or back to the root. Logical workspace moves do not move external files.
 
 Open File uses the native picker and retains the source association. Save As chooses and associates a new standalone file; manual Save/Cmd+S writes contents and viewport back to that file. Automatic content saves remain in SQLite for local recovery and do not silently modify external files. If the associated file changes externally, manual saving refuses to overwrite it; Save As resolves the conflict. File Info beside the title shows the path, rather than permanently displaying it in the sidebar. File associations are local settings, not imported with workspace backups.

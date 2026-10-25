@@ -17,7 +17,8 @@
 | 导航时长 | 编辑侧栏固定 0.5 秒；演示中的手动翻页与自动播放可选 0.5、1、1.5、2 秒 |
 | 全屏场景演示 | 从排序第一项开始，底部手动翻页或自动演示；图层面板可拖拽排序、右键原位改名，退出恢复编辑视图 |
 | 循环演示与只读浏览 | 自动演示可开启循环，末页回首页继续；独立“画布只读”禁止元素编辑、拖动和删除，同时允许平移缩放，保留原生工具锁的连续绘制语义 |
-| 统一工作区界面 | GitHub/Primer 风格浅色主题，灰白分区、蓝色选中态、细边框和紧凑间距；操作菜单、输入表单与危险操作独立分组 |
+| 四种工作区主题 | GitHub、Reddit、VS Code、Notion 风格，分别调整图标、配色与控件；目录高亮保持柔和，固定彩色调色板切换主题并记住偏好 |
+| 更简洁的浏览界面 | 左右侧栏可独立隐藏，标题/保存状态与操作按钮分区；双击鼠标中键恢复 100% 缩放；精简画布菜单与帮助页外链 |
 | 文件打开与保存 | 系统窗口选择文件，手动保存写回原文件；另存为选择新位置，“文件信息”查看路径。内容自动保存到本机恢复副本，外部文件变更时拒绝覆盖 |
 | 演示临时画笔 | 直接使用 Excalidraw 原生自由画笔和样式面板，支持描边、背景、粗细及透明度；翻页或退出清除 |
 | 集中导出 | 右上角统一入口，可框选区域导出 PNG、SVG、PDF；支持整板、场景分页 PDF 及完整可编辑文档 |
@@ -26,11 +27,23 @@
 
 ## 编辑与场景管理
 
-当前桌面版本：**0.3.0**。整体使用 GitHub/Primer 风格浅色界面；保留原生绘图、文件管理、可靠保存、场景与演示能力。Mac 图标使用独立平台布局，已在 Finder 中与系统应用并排核查显示占比，应用内与 Windows 的 Logo 样式不变。
+当前桌面版本：**0.4.0**。新增四种主题、独立侧栏开关与 100% 缩放操作，统一顶部排布和目录字号。保留原生绘图、文件管理、保存、场景与演示能力。
 
 <img src="docs/local-canvas/logo.png" width="128" alt="Canvas 网格手写 Logo：黑色边框、透明连续圆角" />
 
-![Local Canvas 0.3.0 实机：GitHub 风格工作区、文件树和场景列表](docs/local-canvas/files-current.png)
+| GitHub | Reddit |
+| --- | --- |
+| ![0.4.0 GitHub 主题实机](docs/local-canvas/theme-github.png) | ![0.4.0 Reddit 主题实机](docs/local-canvas/theme-reddit.png) |
+| **VS Code** | **Notion** |
+| ![0.4.0 VS Code 主题实机](docs/local-canvas/theme-vscode.png) | ![0.4.0 Notion 主题实机](docs/local-canvas/theme-notion.png) |
+
+四种风格各有目录图标、控件圆角与配色；目录选中和祖先路径采用低对比度背景，主题入口始终使用同一枚彩色调色板。只借鉴视觉风格，不代表与上述产品存在合作关系。
+
+左上角双栏按钮隐藏/显示文件栏，右上角按钮独立控制场景栏。画布双击鼠标中键恢复 100% 并保留视图中心，不触发内容自动保存。画布菜单保留打开、查找、帮助、重置、深色模式、背景及本项目 GitHub；保存和导出沿用工作区入口。
+
+![0.4.0 精简画布菜单](docs/local-canvas/canvas-menu.png)
+
+帮助页已去除顶部四个外链按钮，快捷键沿用原生平台判断：Mac 显示 Cmd/Option，Windows 显示 Ctrl/Alt。Mac 实机与模拟 Win32 平台标签已检查，Windows 实机键盘验证仍待完成。
 
 三点菜单只显示清楚分组的操作项。选择重命名或移动后才显示对应表单，输入与确认按钮分区；选择移动目标不会立即执行，回收站操作需确认。
 
@@ -38,7 +51,7 @@
 | --- | --- | --- |
 | ![实机分组菜单](docs/local-canvas/menu-actions.png) | ![实机重命名输入与确认区](docs/local-canvas/menu-rename.png) | ![实机移动目标与确认区](docs/local-canvas/menu-move.png) |
 
-设计参考：[Primer ActionMenu](https://primer.style/product/components/action-menu/)、[Primer 色彩用法](https://primer.style/product/getting-started/foundations/color-usage/)。仅借鉴界面风格，不使用 GitHub 账户或联网服务。
+设计参考：[Primer ActionMenu](https://primer.style/product/components/action-menu/)、[Primer 色彩用法](https://primer.style/product/getting-started/foundations/color-usage/)。本项目 GitHub 菜单由系统浏览器打开；画布不连接远程编辑服务。
 
 [演示面板统一字号实机截图](docs/local-canvas/presentation-fonts.png)
 
