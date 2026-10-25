@@ -586,6 +586,27 @@ function App() {
     };
     updateScenes(followScenes([...scenes, scene], elements, getCommonBounds));
   };
+  const rebuildSceneBinding = (id) => {
+    if (!api.current || !active.current) return;
+    stop();
+    const elements = api.current.getSceneElements();
+    const binding = selectedBinding(elements, api.current.getAppState());
+    setSceneMenu(null);
+    if (!binding.elementIds.length) {
+      setStatus('先在画布选中元素或组合，再右键场景选择“重建跟随”');
+      return;
+    }
+    updateScenes(
+      followScenes(
+        scenes.map((scene) =>
+          scene.id === id ? { ...scene, binding } : scene,
+        ),
+        elements,
+        getCommonBounds,
+      ),
+    );
+    setStatus('已按当前所选元素或组合重建场景跟随');
+  };
   const exitPresentation = async () => {
     ownerWindow.clearTimeout(presentationTimer.current);
     stop();
@@ -1663,6 +1684,13 @@ function App() {
                   {scenes.find((scene) => scene.id === sceneMenu.id)?.binding
                     ? '重框（解除跟随）'
                     : '重框'}
+                </button>
+                <button
+                  role="menuitem"
+                  title="以画布当前选中的元素或组合重新建立跟随"
+                  onClick={() => rebuildSceneBinding(sceneMenu.id)}
+                >
+                  重建跟随
                 </button>
                 <button
                   role="menuitem"

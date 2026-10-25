@@ -2,6 +2,7 @@
 
 ## 0.4.1 — release validation, 2026-10-25
 
+- Final follow-label alignment was approved from an actual app screenshot: the muted label stays on the title row, right-aligned at 70% opacity. Added `rebuild-follow.e2e.mjs` verifies rebuilding a scene from the current canvas selection, unchanged title/ID, no-selection protection and persistence after restart. Rebuilt Mac arm64 and Windows x64 packages include both refinements; targeted linked-scene/trash and rebuild-follow checks passed on the final Mac package. Earlier five-suite results below predate these final UI/menu additions.
 - Production build and all 18 unit/resource checks passed, including linked-scene range/binding/geometry updates, backup round-trip, malformed binding rejection and transactional trash purge of nodes/revisions/link settings.
 - Final Mac arm64 packaged app passed all five suites, sequentially: `linked-scenes.e2e.mjs`, `local-update.e2e.mjs`, `appearance.e2e.mjs`, `workspace.e2e.mjs`, and the complete `desktop.e2e.mjs`.
 - Actual native grouping, pointer dragging, undo/redo, deletion and undo-deletion updated linked scene bounds correctly. Linked IDs survived restart. Unit checks cover new group members, missing content and backup restoration. Geometry uses the official getCommonBounds API (including rotated content); there is no claim of exhaustive rotation/complex-bound-text coverage.
