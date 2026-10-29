@@ -4,6 +4,23 @@
 
 [下载桌面版（macOS / Windows）](https://github.com/layzerff/excalidraw/releases) · [桌面端源码](https://github.com/layzerff/excalidraw/tree/codex/local-canvas-p0/desktop)
 
+> 以下新增能力位于开发分支，尚未发布到安装包；现有 0.4.1 下载不包含这些功能。
+
+| 开发分支扩展 | 使用方式 |
+| --- | --- |
+| 文件目录排序 | 自定义同级拖拽、名称、创建时间；长标题省略而不挤压图标 |
+| WebDAV 手动备份 | 工作区管理中配置、测试、上传备份或恢复指定备份；不覆盖本机文档，不自动同步 |
+| 网页视频 | 从画布菜单添加 YouTube/Bilibili 完整链接；编辑/演示均可操作官方播放器，切换场景自动暂停 |
+
+<details><summary>开发版实际界面（隔离测试工作区）</summary>
+
+<img src="docs/local-canvas/directory-sorting-development.png" width="220" alt="目录排序与长标题省略，图标保留固定尺寸" />
+<img src="docs/local-canvas/webdav-development.png" width="600" alt="WebDAV 连接设置及手动备份恢复面板，未填写真实账号" />
+
+</details>
+
+WebDAV 已通过本机测试服务器流程，真实 NAS 与 Windows 实机兼容仍需验证。视频受网络、区域及平台嵌入权限限制；PDF/图片导出为静态内容，不携带可播放视频。
+
 [开发源码与运行说明](https://github.com/layzerff/excalidraw/tree/codex/local-canvas-p0/desktop) · [修改清单](https://github.com/layzerff/excalidraw/blob/codex/local-canvas-p0/desktop/NEXT-ITERATION.md) · [更新记录](https://github.com/layzerff/excalidraw/blob/codex/local-canvas-p0/desktop/CHANGELOG.md) · [验证记录](https://github.com/layzerff/excalidraw/blob/codex/local-canvas-p0/desktop/VALIDATION.md) · [原版介绍](README.upstream.md)
 
 ## 与原版的区别
