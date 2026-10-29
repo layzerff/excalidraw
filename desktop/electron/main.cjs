@@ -5,6 +5,7 @@ const {
   dialog,
   session,
   shell,
+  safeStorage,
 } = require('electron');
 const { join } = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -14,6 +15,7 @@ const { basename } = require('node:path');
 const { Store, payload } = require('./store.cjs');
 const { backup: backupDatabase } = require('node:sqlite');
 const { isAbsolute } = require('node:path');
+const webdav = require('./webdav.cjs');
 let win, store;
 app.setName('Local Canvas');
 app.setPath(
@@ -28,7 +30,7 @@ else {
   });
   app
     .whenReady()
-    .then(() => {
+    .then(async () => {
       const locationFile = join(
         app.getPath('userData'),
         'storage-location.json',
@@ -83,14 +85,87 @@ else {
         create: (...args) => store.create(...args),
         rename: (...args) => store.rename(...args),
         move: (...args) => store.move(...args),
+        reorder: (...args) => store.reorder(...args),
+        pauseVideos: async () => {
+          const { parseVideo } = await import('../dist/videos.mjs');
+          const frames = win.webContents.mainFrame.framesInSubtree.filter(
+            (frame) => {
+              try {
+                return !!parseVideo(frame.url);
+              } catch {
+                return false;
+              }
+            },
+          );
+          const results = await Promise.allSettled(
+            frames.map((frame) =>
+              Promise.race([
+                frame.executeJavaScript(
+                  "(() => {const media=[...document.querySelectorAll('video,audio')];media.forEach(element=>element.pause());return media.length;})()",
+                ),
+                new Promise((resolve) => setTimeout(() => resolve(0), 1500)),
+              ]),
+            ),
+          );
+          return results.some(
+            (result) => result.status === 'fulfilled' && result.value > 0,
+          );
+        },
+        webdavInfo: () => {
+          const value = JSON.parse(store.getSetting('webdavConfig') || 'null');
+          return value
+            ? { ...value, hasPassword: !!store.getSetting('webdavSecret') }
+            : null;
+        },
+        webdavSave: (input) => {
+          const value = webdav.config(input);
+          const previous = JSON.parse(
+            store.getSetting('webdavConfig') || 'null',
+          );
+          const same =
+            previous?.url === value.url &&
+            previous?.username === value.username;
+          if (
+            !safeStorage.isEncryptionAvailable() ||
+            safeStorage.getSelectedStorageBackend?.() === 'basic_text'
+          )
+            throw new Error('系统安全存储不可用，无法保存 WebDAV 密码');
+          if (!input.password && !same)
+            throw new Error('连接地址或用户名变更后需重新输入密码');
+          const secret = input.password
+            ? safeStorage.encryptString(input.password).toString('base64')
+            : store.getSetting('webdavSecret');
+          if (!secret) throw new Error('请输入密码');
+          store.transaction(() => {
+            store.setSetting('webdavConfig', JSON.stringify(value));
+            store.setSetting('webdavSecret', secret);
+          });
+          return true;
+        },
+        webdavForget: () =>
+          store.db
+            .prepare(
+              "DELETE FROM settings WHERE key IN ('webdavConfig','webdavSecret')",
+            )
+            .run(),
+        webdavTest: () => dav('PROPFIND'),
+        webdavBackup: async () => {
+          const filename = `local-canvas-${new Date().toISOString().replace(/[:.]/g, '-')}-${require('node:crypto').randomUUID().slice(0, 8)}.json`;
+          await dav('PUT', filename, JSON.stringify(store.backup()));
+          return filename;
+        },
+        webdavRestore: async (filename) =>
+          store.restore(await dav('GET', filename)),
         trash: (...args) => store.trash(...args),
         emptyTrash: () => store.emptyTrash(),
         getSetting: (key) =>
-          ['sidebarWidths', 'collapsedFolders'].includes(key)
-            ? JSON.parse(store.getSetting(key) || 'null')
-            : store.getSetting(key),
+          key.startsWith('webdav')
+            ? null
+            : ['sidebarWidths', 'collapsedFolders'].includes(key)
+              ? JSON.parse(store.getSetting(key) || 'null')
+              : store.getSetting(key),
         setSetting: (key, value) => {
-          if (key.startsWith('documentFile:'))
+          if (key.startsWith('documentFile:') || key.startsWith('webdav'))
             throw new Error('文件关联只能通过系统文件窗口设置');
           return store.setSetting(
             key,
@@ -385,6 +460,18 @@ else {
           return null;
         },
       };
+      async function dav(method, filename, body) {
+        const value = JSON.parse(store.getSetting('webdavConfig') || 'null');
+        const secret = store.getSetting('webdavSecret');
+        if (!value || !secret) throw new Error('请先保存 WebDAV 连接设置');
+        return webdav.request(
+          value,
+          safeStorage.decryptString(Buffer.from(secret, 'base64')),
+          method,
+          filename,
+          body,
+        );
+      }
       ipcMain.handle('workspace', async (event, action, args) => {
         trusted(event);
         if (!Object.hasOwn(operations, action) || !Array.isArray(args))
@@ -421,9 +508,20 @@ else {
           event.returnValue = { error: error.message };
         }
       });
-      // All editor assets are bundled; the desktop renderer cannot contact cloud services.
+      const { allowVideoRequest } = await import('../dist/videos.mjs');
+      // Keep editor networking blocked; only approved embedded players may load media.
       session.defaultSession.webRequest.onBeforeRequest((details, callback) =>
-        callback({ cancel: /^https?:|^wss?:/.test(details.url) }),
+        callback({ cancel: !allowVideoRequest(details) }),
+      );
+      session.defaultSession.webRequest.onBeforeSendHeaders(
+        (details, callback) => {
+          if (
+            /^https:\/\/www\.youtube-nocookie\.com\/embed\//.test(details.url)
+          ) {
+            details.requestHeaders.Referer = 'https://com.localcanvas.desktop/';
+          }
+          callback({ requestHeaders: details.requestHeaders });
+        },
       );
       session.defaultSession.setPermissionRequestHandler(
         (wc, permission, callback) =>

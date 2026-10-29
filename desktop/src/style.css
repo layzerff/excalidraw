@@ -1132,3 +1132,129 @@ header strong {
 .workspace.presenting {
   display: block;
 }
+
+/* Workspace ordering and fixed-size tree icons. */
+.node-title > svg {
+  flex: 0 0 auto;
+}
+.node-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-row > button:last-child {
+  flex: 0 0 28px;
+}
+.tree-sort {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  margin: 6px 0;
+}
+.tree-sort select {
+  flex: 1;
+  min-width: 0;
+  padding: 4px;
+  font-size: 11px;
+}
+.tree-drop-before {
+  box-shadow: 0 -2px var(--accent);
+}
+.tree-drop-after {
+  box-shadow: 0 2px var(--accent);
+}
+.modal label {
+  display: block;
+  margin: 10px 0;
+}
+.modal label > input:not([type='checkbox']) {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 4px;
+}
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+.video-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 12;
+}
+.video-card {
+  position: absolute;
+  pointer-events: none;
+}
+.video-card.video-active {
+  pointer-events: auto;
+  background: #111;
+}
+.video-card iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+.video-start {
+  pointer-events: auto;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 95%;
+  white-space: nowrap;
+}
+.video-close {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  font-size: 11px;
+  opacity: 0.85;
+}
+.video-placeholder {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  background: #f6f8fa;
+  color: #59636e;
+}
+.video-card.video-active {
+  display: flex;
+  flex-direction: column;
+}
+.video-toolbar {
+  flex: 0 0 28px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  background: var(--surface);
+}
+.video-toolbar button {
+  font-size: 11px;
+  padding: 3px 8px;
+}
+.video-card iframe {
+  flex: 1;
+  min-height: 0;
+  height: calc(100% - 28px);
+}
+.modal label.dav-http {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.modal .dav-http input[type='checkbox'] {
+  width: auto;
+  padding: 0;
+  flex: 0 0 auto;
+  margin: 3px 0 0;
+}

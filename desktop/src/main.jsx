@@ -9,12 +9,17 @@ import {
   exportToBlob,
   exportToSvg,
   getCommonBounds,
+  convertToExcalidrawElements,
 } from '@excalidraw/excalidraw';
 import '@excalidraw/excalidraw/index.css';
 import './style.css';
 import { THEMES, themeId, themeStyle } from './themes.mjs';
 import { sceneRange, selectedBinding, followScenes } from './scenes.mjs';
 import { ShellIcon, ThemePaletteIcon } from './ShellIcon.jsx';
+import { sortNodes, SORT_MODES } from './tree.mjs';
+import { parseVideo } from './videos.mjs';
+import { VideoLayer } from './VideoLayer.jsx';
+import { WebdavSettings } from './WebdavSettings.jsx';
 import {
   viewRect,
   targetView,
@@ -179,6 +184,14 @@ function App() {
   }, [fileMenu?.node?.id, fileMenu?.mode]);
   const [fileInfo, setFileInfo] = useState(null);
   const [collapsedFolders, setCollapsedFolders] = useState([]);
+  const [sortMode, setSortMode] = useState('custom');
+  const [treeDrop, setTreeDrop] = useState(null);
+  const [davDialog, setDavDialog] = useState(false);
+  const [videoDialog, setVideoDialog] = useState(false);
+  const [videoURL, setVideoURL] = useState('');
+  const [videoError, setVideoError] = useState('');
+  const [videoView, setVideoView] = useState(null);
+  const [videoPauseEpoch, setVideoPauseEpoch] = useState(0);
   const [dropFolder, setDropFolder] = useState(undefined);
   const [widths, setWidths] = useState({ left: 240, right: 230 });
   const fileDrag = useRef(null),
@@ -354,6 +367,7 @@ function App() {
       setSceneDeletion(null);
       setExportMenu(false);
       setExportRegion(null);
+      setVideoView(null);
       const next = await bridge.invoke('read', id);
       api.current = null;
       setEditorReady(false);
@@ -403,6 +417,8 @@ function App() {
         setWidths(next);
       }
       const collapsed = await bridge.invoke('getSetting', 'collapsedFolders');
+      const sorting = await bridge.invoke('getSetting', 'treeSort');
+      if (SORT_MODES.includes(sorting)) setSortMode(sorting);
       if (Array.isArray(collapsed)) setCollapsedFolders(collapsed);
       const saved = await bridge.invoke('getSetting', 'activeDocument');
       setSidebar((await bridge.invoke('getSetting', 'sceneSidebar')) !== false);
@@ -532,6 +548,7 @@ function App() {
   };
   const navigate = (scene) => {
     if (!api.current) return;
+    setVideoPauseEpoch((value) => value + 1);
     stop();
     setCurrentScene(scene.id);
     clearInk();
@@ -608,6 +625,7 @@ function App() {
     setStatus('已按当前所选元素或组合重建场景跟随');
   };
   const exitPresentation = async () => {
+    setVideoPauseEpoch((value) => value + 1);
     ownerWindow.clearTimeout(presentationTimer.current);
     stop();
     presentation.current = false;
@@ -1011,107 +1029,151 @@ function App() {
     ancestor = nodes.find((node) => node.id === ancestor)?.parent;
   }
   const tree = (parent = null, depth = 0) =>
-    nodes
-      .filter((n) => n.parent === parent && !n.deleted)
-      .map((n) => (
-        <React.Fragment key={n.id}>
-          <div
-            className={`tree-row ${n.kind === 'folder' ? 'folder-row' : ''} ${doc?.id === n.id ? 'active' : ''} ${activeAncestors.has(n.id) ? 'folder-selected' : ''} ${dropFolder === n.id ? 'drop-target' : ''}`}
-            data-depth={depth}
-            style={{
-              paddingLeft: 8 + depth * 28,
-              '--tree-highlight-start': `${depth ? 22 + (depth - 1) * 28 : 0}px`,
-            }}
-            onContextMenu={(event) => openFileMenu(event, n)}
-            draggable={!busy}
-            onDragStart={(event) => {
-              fileDrag.current = n.id;
-              event.dataTransfer.setData('text/plain', n.id);
-              event.dataTransfer.effectAllowed = 'move';
-            }}
-            onDragEnd={() => {
-              fileDrag.current = null;
+    sortNodes(
+      nodes.filter((n) => n.parent === parent && !n.deleted),
+      sortMode,
+    ).map((n) => (
+      <React.Fragment key={n.id}>
+        <div
+          className={`tree-row ${n.kind === 'folder' ? 'folder-row' : ''} ${doc?.id === n.id ? 'active' : ''} ${activeAncestors.has(n.id) ? 'folder-selected' : ''} ${dropFolder === n.id ? 'drop-target' : ''} ${treeDrop?.id === n.id ? `tree-drop-${treeDrop.edge}` : ''}`}
+          data-depth={depth}
+          style={{
+            paddingLeft: 8 + depth * 28,
+            '--tree-highlight-start': `${depth ? 22 + (depth - 1) * 28 : 0}px`,
+          }}
+          onContextMenu={(event) => openFileMenu(event, n)}
+          draggable={!busy}
+          onDragStart={(event) => {
+            fileDrag.current = n.id;
+            event.dataTransfer.setData('text/plain', n.id);
+            event.dataTransfer.effectAllowed = 'move';
+          }}
+          onDragEnd={() => {
+            fileDrag.current = null;
+            setTreeDrop(null);
+            setDropFolder(undefined);
+          }}
+          onDragOver={(event) => {
+            const source = nodes.find((node) => node.id === fileDrag.current);
+            const box = event.currentTarget.getBoundingClientRect();
+            if (
+              sortMode === 'custom' &&
+              source &&
+              source.id !== n.id &&
+              source.parent === n.parent &&
+              (n.kind !== 'folder' ||
+                event.clientY - box.top < 9 ||
+                box.bottom - event.clientY < 9)
+            ) {
+              event.preventDefault();
               setDropFolder(undefined);
-            }}
-            onDragOver={(event) => {
-              if (fileDrag.current && n.kind === 'folder') {
-                event.preventDefault();
-                setDropFolder(n.id);
-              }
-            }}
-            onDrop={(event) => {
-              if (n.kind === 'folder') dropOn(event, n.id);
-            }}
-          >
-            {Array.from({ length: depth }, (_, level) => (
-              <span
-                key={level}
-                className="tree-guide"
-                style={{ left: 21 + level * 28 }}
-                aria-hidden="true"
-              />
-            ))}
-            {n.kind !== 'folder' && (
-              <span className="tree-toggle-spacer" aria-hidden="true" />
-            )}
-            {n.kind === 'folder' && (
-              <button
-                className="folder-toggle"
-                aria-label={`${collapsedFolders.includes(n.id) ? '展开' : '收起'} ${n.title}`}
-                aria-expanded={!collapsedFolders.includes(n.id)}
-                disabled={
-                  !nodes.some(
-                    (child) => child.parent === n.id && !child.deleted,
-                  )
-                }
-                onClick={() => {
-                  const next = collapsedFolders.includes(n.id)
-                    ? collapsedFolders.filter((id) => id !== n.id)
-                    : [...collapsedFolders, n.id];
-                  setCollapsedFolders(next);
-                  run(() =>
-                    bridge.invoke('setSetting', 'collapsedFolders', next),
-                  );
-                }}
-              >
-                <ShellIcon
-                  name="chevron"
-                  theme={uiTheme}
-                  open={!collapsedFolders.includes(n.id)}
-                />
-              </button>
-            )}
+              setTreeDrop({
+                id: n.id,
+                edge:
+                  event.clientY < box.top + box.height / 2 ? 'before' : 'after',
+              });
+              return;
+            }
+            setTreeDrop(null);
+            if (fileDrag.current && n.kind === 'folder') {
+              event.preventDefault();
+              setDropFolder(n.id);
+            }
+          }}
+          onDrop={(event) => {
+            if (treeDrop?.id === n.id) {
+              event.preventDefault();
+              event.stopPropagation();
+              const ids = sortNodes(
+                nodes.filter((v) => v.parent === n.parent && !v.deleted),
+                'custom',
+              )
+                .map((v) => v.id)
+                .filter((id) => id !== fileDrag.current);
+              ids.splice(
+                ids.indexOf(n.id) + (treeDrop.edge === 'after' ? 1 : 0),
+                0,
+                fileDrag.current,
+              );
+              fileDrag.current = null;
+              setTreeDrop(null);
+              run(async () => {
+                await bridge.invoke('reorder', n.parent, ids);
+                await refresh();
+              });
+              return;
+            }
+            if (n.kind === 'folder') dropOn(event, n.id);
+          }}
+        >
+          {Array.from({ length: depth }, (_, level) => (
+            <span
+              key={level}
+              className="tree-guide"
+              style={{ left: 21 + level * 28 }}
+              aria-hidden="true"
+            />
+          ))}
+          {n.kind !== 'folder' && (
+            <span className="tree-toggle-spacer" aria-hidden="true" />
+          )}
+          {n.kind === 'folder' && (
             <button
-              className="node-title"
-              disabled={busy}
-              onClick={() =>
-                run(() =>
-                  n.kind === 'document' ? switchDoc(n.id) : setFolder(n.id),
-                )
+              className="folder-toggle"
+              aria-label={`${collapsedFolders.includes(n.id) ? '展开' : '收起'} ${n.title}`}
+              aria-expanded={!collapsedFolders.includes(n.id)}
+              disabled={
+                !nodes.some((child) => child.parent === n.id && !child.deleted)
               }
+              onClick={() => {
+                const next = collapsedFolders.includes(n.id)
+                  ? collapsedFolders.filter((id) => id !== n.id)
+                  : [...collapsedFolders, n.id];
+                setCollapsedFolders(next);
+                run(() =>
+                  bridge.invoke('setSetting', 'collapsedFolders', next),
+                );
+              }}
             >
               <ShellIcon
-                name={n.kind === 'folder' ? 'folder' : 'document'}
+                name="chevron"
                 theme={uiTheme}
                 open={!collapsedFolders.includes(n.id)}
-              />{' '}
-              {n.title}
+              />
             </button>
-            <button
-              title="操作"
-              aria-label={`${n.title} 操作`}
-              aria-haspopup="menu"
-              aria-expanded={fileMenu?.node?.id === n.id}
-              onClick={(event) => openFileMenu(event, n)}
-            >
-              ···
-            </button>
-          </div>
-          {n.kind === 'folder' &&
-            !collapsedFolders.includes(n.id) &&
-            tree(n.id, depth + 1)}
-        </React.Fragment>
-      ));
+          )}
+          <button
+            className="node-title"
+            title={n.title}
+            disabled={busy}
+            onClick={() =>
+              run(() =>
+                n.kind === 'document' ? switchDoc(n.id) : setFolder(n.id),
+              )
+            }
+          >
+            <ShellIcon
+              name={n.kind === 'folder' ? 'folder' : 'document'}
+              theme={uiTheme}
+              open={!collapsedFolders.includes(n.id)}
+            />{' '}
+            <span className="node-name">{n.title}</span>
+          </button>
+          <button
+            title="操作"
+            aria-label={`${n.title} 操作`}
+            aria-haspopup="menu"
+            aria-expanded={fileMenu?.node?.id === n.id}
+            onClick={(event) => openFileMenu(event, n)}
+          >
+            ···
+          </button>
+        </div>
+        {n.kind === 'folder' &&
+          !collapsedFolders.includes(n.id) &&
+          tree(n.id, depth + 1)}
+      </React.Fragment>
+    ));
   const remove = async (node) => {
     flush();
     await bridge.invoke('trash', node.id, true);
@@ -1186,11 +1248,28 @@ function App() {
         >
           <ShellIcon name="home" theme={uiTheme} size={18} /> 根目录
         </button>
+        <label className="tree-sort">
+          目录排序
+          <select
+            aria-label="目录排序"
+            value={sortMode}
+            onChange={(e) => {
+              const value = e.target.value;
+              setSortMode(value);
+              run(() => bridge.invoke('setSetting', 'treeSort', value));
+            }}
+          >
+            <option value="custom">自定义（拖拽排序）</option>
+            <option value="name">名称 A–Z</option>
+            <option value="created">创建时间（从早到晚）</option>
+          </select>
+        </label>
         <div className="tree">{tree()}</div>
         <details className="workspace-tools">
           <summary>工作区管理</summary>
           <div className="file-tools">
             <button onClick={() => setStorageDialog(true)}>保存位置</button>
+            <button onClick={() => setDavDialog(true)}>WebDAV 设置</button>
             <button
               onClick={() =>
                 run(async () => {
@@ -1315,6 +1394,14 @@ function App() {
               key={`${doc.id}:${editorEpoch}`}
               langCode="zh-CN"
               showDeprecatedFonts
+              validateEmbeddable={(link) => !!parseVideo(link)}
+              renderEmbeddable={(element) =>
+                parseVideo(element.link) ? (
+                  <div className="video-placeholder">
+                    {parseVideo(element.link).provider} 视频
+                  </div>
+                ) : null
+              }
               theme={canvasDark ? 'dark' : 'light'}
               UIOptions={{
                 canvasActions: {
@@ -1338,6 +1425,27 @@ function App() {
                   changed({ ...active.current.data, libraryItems });
               }}
               onChange={(elements, appState, files) => {
+                if (active.current?.id === doc.id) {
+                  const videos = elements.filter(
+                    (e) => e.type === 'embeddable' && !e.isDeleted,
+                  );
+                  const next = {
+                    elements: videos,
+                    state: {
+                      scrollX: appState.scrollX,
+                      scrollY: appState.scrollY,
+                      zoom: appState.zoom,
+                      width: appState.width,
+                      height: appState.height,
+                    },
+                  };
+                  setVideoView((previous) =>
+                    (!videos.length && !previous?.elements.length) ||
+                    JSON.stringify(previous) === JSON.stringify(next)
+                      ? previous
+                      : next,
+                  );
+                }
                 if (presentation.current || storagePending) return;
                 if (active.current?.id !== doc.id) return;
                 const data = JSON.parse(
@@ -1373,6 +1481,15 @@ function App() {
                 <MainMenu.DefaultItems.SearchMenu />
                 <MainMenu.DefaultItems.Help />
                 <MainMenu.DefaultItems.ClearCanvas />
+                <MainMenu.Item
+                  onSelect={() => {
+                    setVideoError('');
+                    setVideoURL('');
+                    setVideoDialog(true);
+                  }}
+                >
+                  嵌入网页视频
+                </MainMenu.Item>
                 <MainMenu.Separator />
                 <MainMenu.ItemLink
                   href="https://github.com/layzerff/excalidraw"
@@ -1397,6 +1514,19 @@ function App() {
               <p>创建白板，自由绘制，再用场景整理你的思路。</p>
               <button onClick={() => create('document')}>创建第一张白板</button>
             </div>
+          )}
+          {doc && (
+            <VideoLayer
+              key={doc.id}
+              bridge={bridge}
+              pauseEpoch={videoPauseEpoch}
+              elements={videoView?.elements || []}
+              state={videoView?.state}
+              interact={() => {
+                stop();
+                setPen(false);
+              }}
+            />
           )}
           {selecting && (
             <div
@@ -2410,6 +2540,76 @@ function App() {
             >
               关闭
             </button>
+          </section>
+        </div>
+      )}
+      {davDialog && (
+        <WebdavSettings
+          bridge={bridge}
+          close={() => setDavDialog(false)}
+          beforeTransfer={flush}
+          restored={refresh}
+        />
+      )}
+      {videoDialog && (
+        <div className="modal-backdrop">
+          <section
+            className="modal"
+            role="dialog"
+            aria-label="嵌入网页视频"
+            aria-modal="true"
+          >
+            <h2>嵌入网页视频</h2>
+            <p>
+              支持 YouTube、Bilibili
+              完整视频地址。点击画布上的“操作视频”才会联网加载官方播放器；播放、暂停和拖动进度使用播放器原生控件。停止或离开可见区域后播放器卸载。
+            </p>
+            <label>
+              视频地址
+              <input
+                aria-label="视频地址"
+                value={videoURL}
+                onChange={(e) => setVideoURL(e.target.value)}
+                placeholder="https://www.bilibili.com/video/BV…"
+              />
+            </label>
+            <p role="alert">{videoError}</p>
+            <div className="dialog-actions">
+              <button
+                onClick={() => {
+                  if (!parseVideo(videoURL)) {
+                    setVideoError(
+                      '请输入有效的 YouTube 或 Bilibili HTTPS 完整视频地址（暂不支持短链 b23.tv）',
+                    );
+                    return;
+                  }
+                  if (!api.current) return;
+                  const view = viewRect(api.current.getAppState());
+                  const elements = convertToExcalidrawElements([
+                    {
+                      type: 'embeddable',
+                      x: view.x + view.width / 2 - 320,
+                      y: view.y + view.height / 2 - 180,
+                      width: 640,
+                      height: 360,
+                      link: videoURL,
+                      strokeColor: '#868e96',
+                    },
+                  ]);
+                  api.current.updateScene({
+                    elements: [
+                      ...api.current.getSceneElementsIncludingDeleted(),
+                      ...elements,
+                    ],
+                    captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+                  });
+                  setVideoDialog(false);
+                }}
+              >
+                添加到画布
+              </button>
+              <button onClick={() => setVideoDialog(false)}>取消</button>
+            </div>
           </section>
         </div>
       )}

@@ -61,7 +61,37 @@ class Store {
       CREATE TABLE IF NOT EXISTS nodes(id TEXT PRIMARY KEY, parent TEXT REFERENCES nodes(id), kind TEXT NOT NULL CHECK(kind IN ('folder','document')), title TEXT NOT NULL, data TEXT, revision INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0, updated INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS revisions(id INTEGER PRIMARY KEY, document TEXT NOT NULL, data TEXT NOT NULL, created INTEGER NOT NULL);
-      PRAGMA user_version=1;`);
+      `);
+    const columns = new Set(
+      this.db
+        .prepare('PRAGMA table_info(nodes)')
+        .all()
+        .map((column) => column.name),
+    );
+    this.transaction(() => {
+      if (!columns.has('created')) {
+        this.db.exec(
+          'ALTER TABLE nodes ADD COLUMN created INTEGER NOT NULL DEFAULT 0; UPDATE nodes SET created=updated',
+        );
+      }
+      if (!columns.has('position')) {
+        this.db.exec(
+          'ALTER TABLE nodes ADD COLUMN position INTEGER NOT NULL DEFAULT 0',
+        );
+        // Retain the old alphabetical order when upgrading an existing workspace.
+        this.db
+          .prepare(
+            'SELECT id FROM nodes ORDER BY kind DESC,title COLLATE NOCASE',
+          )
+          .all()
+          .forEach((row, index) => {
+            this.db
+              .prepare('UPDATE nodes SET position=? WHERE id=?')
+              .run(index, row.id);
+          });
+      }
+      this.db.exec('PRAGMA user_version=2');
+    });
     if (!this.db.prepare('SELECT 1 FROM nodes LIMIT 1').get())
       this.create('document', null, '我的第一张白板');
   }
@@ -79,7 +109,7 @@ class Store {
   list() {
     return this.db
       .prepare(
-        'SELECT id,parent,kind,title,revision,deleted,updated FROM nodes ORDER BY kind DESC,title COLLATE NOCASE',
+        'SELECT id,parent,kind,title,revision,deleted,updated,created,position FROM nodes ORDER BY position,id',
       )
       .all();
   }
@@ -101,7 +131,7 @@ class Store {
     const id = randomUUID();
     this.db
       .prepare(
-        'INSERT INTO nodes(id,parent,kind,title,data,updated) VALUES(?,?,?,?,?,?)',
+        'INSERT INTO nodes(id,parent,kind,title,data,updated,created,position) VALUES(?,?,?,?,?,?,?,?)',
       )
       .run(
         id,
@@ -110,6 +140,12 @@ class Store {
         name(title),
         kind === 'document' ? payload(data) : null,
         Date.now(),
+        Date.now(),
+        this.db
+          .prepare(
+            'SELECT COALESCE(MAX(position),-1)+1 AS next FROM nodes WHERE parent IS ?',
+          )
+          .get(parent).next,
       );
     return id;
   }
@@ -133,8 +169,37 @@ class Store {
       p = this.node(p).parent;
     }
     this.db
-      .prepare('UPDATE nodes SET parent=?,updated=? WHERE id=?')
-      .run(parent, Date.now(), id);
+      .prepare('UPDATE nodes SET parent=?,updated=?,position=? WHERE id=?')
+      .run(
+        parent,
+        Date.now(),
+        this.db
+          .prepare(
+            'SELECT COALESCE(MAX(position),-1)+1 AS next FROM nodes WHERE parent IS ?',
+          )
+          .get(parent).next,
+        id,
+      );
+  }
+  reorder(parent, ids) {
+    this.parent(parent);
+    const siblings = this.list().filter(
+      (node) => node.parent === parent && !node.deleted,
+    );
+    if (
+      !Array.isArray(ids) ||
+      ids.length !== siblings.length ||
+      new Set(ids).size !== ids.length ||
+      siblings.some((node) => !ids.includes(node.id))
+    )
+      throw new Error('目录顺序已变化，请刷新后重试');
+    return this.transaction(() =>
+      ids.forEach((id, index) => {
+        this.db
+          .prepare('UPDATE nodes SET position=? WHERE id=?')
+          .run(index, id);
+      }),
+    );
   }
   trash(id, deleted) {
     this.node(id);
@@ -233,7 +298,9 @@ class Store {
       version: 1,
       created: new Date().toISOString(),
       nodes: this.db.prepare('SELECT * FROM nodes').all(),
-      settings: this.db.prepare('SELECT * FROM settings').all(),
+      settings: this.db
+        .prepare("SELECT * FROM settings WHERE key NOT LIKE 'webdav%' ")
+        .all(),
     };
   }
   restore(bundle) {
@@ -280,7 +347,7 @@ class Store {
         if (row.parent) insert(map.get(row.parent));
         this.db
           .prepare(
-            'INSERT INTO nodes(id,parent,kind,title,data,deleted,updated) VALUES(?,?,?,?,?,?,?)',
+            'INSERT INTO nodes(id,parent,kind,title,data,deleted,updated,created,position) VALUES(?,?,?,?,?,?,?,?,?)',
           )
           .run(
             id,
@@ -290,6 +357,14 @@ class Store {
             row.data,
             row.deleted ? 1 : 0,
             Date.now(),
+            Number.isSafeInteger(row.created) && row.created > 0
+              ? row.created
+              : Number.isSafeInteger(row.updated) && row.updated > 0
+                ? row.updated
+                : Date.now(),
+            Number.isSafeInteger(row.position)
+              ? row.position
+              : bundle.nodes.indexOf(row),
           );
       };
       bundle.nodes.forEach(insert);
