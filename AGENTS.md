@@ -5,6 +5,8 @@
 
 ## Local Canvas documentation sync
 
+- Follow `desktop/UI-STANDARDS.md` for all Local Canvas UI additions. Shared toolbar items must use native button/icon dimensions, and actions in the same row must share typography and vertical centers. Check all enabled themes and inspect a real screenshot for overlap before delivery.
+
 - User request: keep README focused on differences from upstream Excalidraw and real screenshots. Put detailed requirements, bug explanations and history in desktop/NEXT-ITERATION.md, desktop/CHANGELOG.md and desktop/VALIDATION.md, linked from README.
 - Maintain the root `README.md` as the fork overview; retain upstream introduction in `README.upstream.md`. Keep detailed requirements and acceptance criteria in `desktop/NEXT-ITERATION.md` and desktop run instructions in `desktop/README.md`.
 - Distinguish shipped/validated, partially supported/unverified, planned, and proposed defaults. Do not present roadmap mockups as completed functionality or official upstream screenshots as fork screenshots.

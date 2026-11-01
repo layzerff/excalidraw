@@ -1,0 +1,202 @@
+[
+  {
+    "file": "presentation.webp",
+    "title": "全屏演示：平滑翻页、自动演示、停留与循环",
+    "frames": 27,
+    "bytes": 1011172,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  },
+  {
+    "file": "workspace.webp",
+    "title": "本地文件管理：根目录新建、重命名、移动与排序",
+    "frames": 13,
+    "bytes": 77016,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  },
+  {
+    "file": "save-files.webp",
+    "title": "保存与另存为：内容自动保存，手动保存同时记录视图",
+    "frames": 14,
+    "bytes": 351604,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  },
+  {
+    "file": "backup-trash.webp",
+    "title": "备份恢复与回收站：误删可恢复，清空需确认",
+    "frames": 14,
+    "bytes": 147914,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  },
+  {
+    "file": "scenes-follow.webp",
+    "title": "元素场景：移动跟随、解除与重建跟随",
+    "frames": 12,
+    "bytes": 155356,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  },
+  {
+    "file": "exports.webp",
+    "title": "集中导出：指定区域 PNG / SVG / PDF，完整文档保留编辑",
+    "frames": 12,
+    "bytes": 163418,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  },
+  {
+    "file": "library.webp",
+    "title": "统一素材库：逐项搜索、本地与在线分区、自动排列",
+    "frames": 26,
+    "bytes": 160520,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  },
+  {
+    "file": "library-folders.webp",
+    "title": "本地素材管理：右键文件夹、移入分类、查看保存位置",
+    "frames": 9,
+    "bytes": 235928,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  },
+  {
+    "file": "toolbar-readonly.webp",
+    "title": "工具栏拖拽排序与独立画布只读",
+    "frames": 10,
+    "bytes": 120922,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  },
+  {
+    "file": "settings.webp",
+    "title": "设置：中英界面、缩放步长、正式 / 测试更新渠道",
+    "frames": 12,
+    "bytes": 271970,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  },
+  {
+    "file": "font-scale.webp",
+    "title": "相对字号：原生四档＋滑块＋数字输入",
+    "frames": 53,
+    "bytes": 216858,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  },
+  {
+    "file": "fill-density.webp",
+    "title": "填充密度：斜线与交叉线实时调节",
+    "frames": 62,
+    "bytes": 3195026,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  },
+  {
+    "file": "arrange.webp",
+    "title": "自动整理：纵向 / 横向 / 阵列与等距间隔",
+    "frames": 21,
+    "bytes": 519482,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  },
+  {
+    "file": "balloons.webp",
+    "title": "自增球标：连续编号、手动起点与原生样式",
+    "frames": 12,
+    "bytes": 83054,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  },
+  {
+    "file": "search.webp",
+    "title": "画布搜索：文字 / 拼音 / 首字母，高亮并定位",
+    "frames": 15,
+    "bytes": 617910,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  },
+  {
+    "file": "overview.webp",
+    "title": "全览与快速定位：中键双击 → 拖动 → 回到编辑",
+    "frames": 14,
+    "bytes": 402990,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  },
+  {
+    "file": "scenes-create.webp",
+    "title": "三种场景：当前视图、框选区域、元素 / 组合",
+    "frames": 14,
+    "bytes": 140622,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  },
+  {
+    "file": "scenes-list.webp",
+    "title": "场景管理：原位标题、拖拽排序、Shift 批量删除",
+    "frames": 14,
+    "bytes": 202328,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  },
+  {
+    "file": "presentation-ink.webp",
+    "title": "演示临时画笔：原生样式，翻页自动清除",
+    "frames": 15,
+    "bytes": 290128,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  },
+  {
+    "file": "themes-layout.webp",
+    "title": "六种主题、可伸缩侧栏与独立隐藏",
+    "frames": 18,
+    "bytes": 422472,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  },
+  {
+    "file": "webdav.webp",
+    "title": "WebDAV：设置说明、连接状态与手动上传备份",
+    "frames": 11,
+    "bytes": 306038,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  },
+  {
+    "file": "embeds.webp",
+    "title": "HTTPS 网页：独立区域展示，不遮挡预设模板",
+    "frames": 11,
+    "bytes": 122006,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  },
+  {
+    "file": "video.webp",
+    "title": "视频播放与场景暂停：独立视频区，模板不被遮挡",
+    "frames": 52,
+    "bytes": 1913430,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  },
+  {
+    "file": "nas-web.webp",
+    "title": "NAS 网页版：浏览器编辑、服务端保存与重载恢复",
+    "frames": 10,
+    "bytes": 95066,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  },
+  {
+    "file": "library-online.webp",
+    "title": "在线素材包：展开、冻结标题、拖入画布与离线保存",
+    "frames": 18,
+    "bytes": 322056,
+    "template": "new 白板演示副本",
+    "recording": "真实界面；录制字幕与指针高亮为演示标注；视频与模板分区摆放"
+  }
+]
