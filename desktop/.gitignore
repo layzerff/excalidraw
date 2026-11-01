@@ -5,3 +5,7 @@ test-results/
 *.sqlite*
 THIRD-PARTY-NOTICES.md
 !package-lock.json
+
+web/data/
+web/.env
+web-data/

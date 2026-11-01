@@ -61,16 +61,17 @@ export function ShellIcon({ name, theme = 'github', open = false, size = 18 }) {
         : id === 'reddit'
           ? 'm4 10 8-6 8 6v9a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1v-9Z'
           : 'm3 10 9-7 9 7v11h-6v-7H9v7H3V10Z',
-    folder:
-      id === 'vscode'
-        ? 'M3 6h6l2 2h10v12H3V6Z'
-        : open
-          ? 'M3 7V5h7l2 2h9v3H6L3 20V7Zm0 13 3-10h17l-3 10H3Z'
-          : 'M3 20V5h7l2 2h9v13H3Z',
+    folder: ['vscode', 'discord'].includes(id)
+      ? 'M3 6h6l2 2h10v12H3V6Z'
+      : open
+        ? 'M3 7V5h7l2 2h9v3H6L3 20V7Zm0 13 3-10h17l-3 10H3Z'
+        : 'M3 20V5h7l2 2h9v13H3Z',
     document:
-      id === 'notion'
-        ? 'M5 3h14v18H5V3Zm4 5h6m-6 4h6m-6 4h4'
-        : 'M5 3h9l5 5v13H5V3Zm9 0v5h5M8 12h8m-8 4h8',
+      id === 'wechat'
+        ? 'M5 4h14v16H5V4Zm3 4h8m-8 4h8m-8 4h5'
+        : id === 'notion'
+          ? 'M5 3h14v18H5V3Zm4 5h6m-6 4h6m-6 4h4'
+          : 'M5 3h9l5 5v13H5V3Zm9 0v5h5M8 12h8m-8 4h8',
     chevron:
       id === 'notion'
         ? open
@@ -101,9 +102,25 @@ export function ShellIcon({ name, theme = 'github', open = false, size = 18 }) {
         stroke="currentColor"
         strokeWidth={stroke}
         strokeLinecap={id === 'vscode' ? 'square' : 'round'}
-        strokeLinejoin={id === 'reddit' ? 'round' : 'miter'}
+        strokeLinejoin={
+          ['reddit', 'wechat', 'discord'].includes(id) ? 'round' : 'miter'
+        }
         fill={name === 'chevron' && id === 'notion' ? 'currentColor' : 'none'}
       />
+    </svg>
+  );
+}
+
+export function GitHubMark() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M12 .8a11.2 11.2 0 0 0-3.54 21.83c.56.1.77-.24.77-.54v-2.1c-3.13.68-3.79-1.33-3.79-1.33-.51-1.3-1.25-1.65-1.25-1.65-1.02-.7.08-.69.08-.69 1.13.08 1.72 1.16 1.72 1.16 1 1.71 2.62 1.22 3.26.94.1-.73.39-1.22.71-1.5-2.5-.28-5.12-1.25-5.12-5.56 0-1.23.44-2.24 1.15-3.03-.11-.28-.5-1.43.11-2.98 0 0 .94-.3 3.08 1.15a10.7 10.7 0 0 1 5.6 0c2.14-1.45 3.08-1.15 3.08-1.15.61 1.55.22 2.7.11 2.98.72.79 1.15 1.8 1.15 3.03 0 4.32-2.62 5.28-5.13 5.56.4.35.76 1.03.76 2.08v3.09c0 .3.2.65.77.54A11.2 11.2 0 0 0 12 .8Z" />
     </svg>
   );
 }

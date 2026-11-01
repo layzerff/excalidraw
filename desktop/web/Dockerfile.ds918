@@ -1,0 +1,13 @@
+# DS918+ / older Apollolake kernels: use the musl build and preflight on the NAS.
+# Node.js classifies Linux x64/musl as experimental; this is a preview target.
+FROM node:24-alpine
+WORKDIR /app
+COPY dist ./dist
+COPY electron/store.cjs electron/webdav.cjs electron/libraries.cjs electron/library-store.cjs ./electron/
+COPY web/server.cjs ./web/
+RUN mkdir /data && chown node:node /data
+ENV HOST=0.0.0.0 PORT=8080 LOCAL_CANVAS_DATA=/data
+USER node
+EXPOSE 8080
+VOLUME /data
+CMD ["node", "web/server.cjs"]

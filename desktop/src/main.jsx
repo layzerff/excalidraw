@@ -1,7 +1,9 @@
+import { translate as __ui } from './i18n.mjs';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   Excalidraw,
+  DefaultSidebar,
   MainMenu,
   CaptureUpdateAction,
   serializeAsJSON,
@@ -9,24 +11,48 @@ import {
   exportToBlob,
   exportToSvg,
   getCommonBounds,
+  newElementWith,
+  restoreElements,
   convertToExcalidrawElements,
 } from '@excalidraw/excalidraw';
 import '@excalidraw/excalidraw/index.css';
 import './style.css';
 import { THEMES, themeId, themeStyle } from './themes.mjs';
-import { sceneRange, selectedBinding, followScenes } from './scenes.mjs';
-import { ShellIcon, ThemePaletteIcon } from './ShellIcon.jsx';
+import {
+  sceneRange,
+  selectedBinding,
+  followScenes,
+  cascadeScenes,
+} from './scenes.mjs';
+import { GitHubMark, ShellIcon, ThemePaletteIcon } from './ShellIcon.jsx';
 import { sortNodes, SORT_MODES } from './tree.mjs';
 import { parseVideo } from './videos.mjs';
-import { VideoLayer } from './VideoLayer.jsx';
+import { parseEmbed, embedOrigins } from './embeds.mjs';
+import { setLanguage, translate } from './i18n.mjs';
+import { useDavConnection } from './useDavConnection.jsx';
+import { FillDensity } from './FillDensity.jsx';
+import { FILL_TYPES, densityOf } from './fill-density.mjs';
+import { CanvasSearch } from './CanvasSearch.jsx';
+import { LibraryActions } from './LibraryActions.jsx';
+import { VideoEmbed, VideoControls } from './VideoLayer.jsx';
+import { arrangeElements } from './arrange.mjs';
+import { Settings } from './Settings.jsx';
+import { CanvasTools } from './CanvasTools.jsx';
+import {
+  circularBalloons,
+  balloonNumber,
+  balloonSkeleton,
+  resizedBalloon,
+  restyledBalloon,
+} from './balloons.mjs';
 import { WebdavSettings } from './WebdavSettings.jsx';
 import {
+  overviewView,
   viewRect,
   targetView,
   interpolate,
   normalizeRect,
 } from './navigation.mjs';
-
 const root = document.getElementById('root');
 const ownerWindow = root.ownerDocument.defaultView;
 const bridge = ownerWindow.workspace;
@@ -79,6 +105,41 @@ function exportOptions(data, rect) {
     },
   };
 }
+function VideoIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m10 9 5 3-5 3Z" />
+    </svg>
+  );
+}
+function LayoutIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      aria-hidden="true"
+    >
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
+    </svg>
+  );
+}
 function PanelIcon() {
   return (
     <svg
@@ -126,6 +187,50 @@ function FolderIcon({ open }) {
 }
 function App() {
   const [uiTheme, setUITheme] = useState('github');
+  const defaults = {
+    reduceMotion: false,
+    wheelZoomStep: 5,
+    fillDensityDefaults: {},
+    startReadOnly: false,
+    skipCascadeNotice: false,
+    autoCheckUpdates: true,
+    autoDownloadUpdates: false,
+    updateChannel: 'stable',
+    language: 'zh-CN',
+  };
+  const [preferences, setPreferences] = useState(defaults),
+    [preferencesReady, setPreferencesReady] = useState(false),
+    [settings, setSettings] = useState(false);
+  useLayoutEffect(() => {
+    setLanguage(preferences.language);
+    root.ownerDocument.documentElement.lang =
+      preferences.language === 'en' ? 'en' : 'zh-CN';
+  }, [preferences.language]);
+  useLayoutEffect(() => {
+    root.ownerDocument.documentElement.dataset.wheelZoomStep = String(
+      preferences.wheelZoomStep || 5,
+    );
+  }, [preferences.wheelZoomStep]);
+  const [updateAvailable, setUpdateAvailable] = useState(null);
+  const preferenceRef = useRef(preferences);
+  preferenceRef.current = preferences;
+  const [cascadeNotice, setCascadeNotice] = useState(null),
+    [skipCascade, setSkipCascade] = useState(false);
+  const sceneArchive = useRef(new Map()),
+    sceneObserved = useRef(false);
+  const [overview, setOverview] = useState(null);
+  const changePreferences = (next) => {
+    setLanguage(next.language);
+    setPreferences(next);
+    run(() =>
+      bridge.invoke('setSetting', 'appPreferences', JSON.stringify(next)),
+    );
+  };
+  const changeTheme = (id) => {
+    setUITheme(id);
+    setCanvasDark(THEMES[id].dark);
+    run(() => bridge.invoke('setSetting', 'uiTheme', id));
+  };
   const [fileSidebar, setFileSidebar] = useState(true);
   const middleClick = useRef(null);
   const [canvasDark, setCanvasDark] = useState(false);
@@ -141,7 +246,7 @@ function App() {
   const [nodes, setNodes] = useState([]),
     [doc, setDoc] = useState(null),
     [folder, setFolder] = useState(null);
-  const [status, setStatus] = useState('正在打开…'),
+  const [status, setStatus] = useState(__ui('正在打开…')),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false);
   const [scenes, setScenes] = useState([]),
@@ -187,13 +292,125 @@ function App() {
   const [sortMode, setSortMode] = useState('custom');
   const [treeDrop, setTreeDrop] = useState(null);
   const [davDialog, setDavDialog] = useState(false);
+  const [approvedOrigins, setApprovedOrigins] = useState([]);
+  const [consent, setConsent] = useState(null);
+  const [libraryInstall, setLibraryInstall] = useState(null);
+  const [toolbarOrder, setToolbarOrder] = useState([]);
+  const [fillDensity, setFillDensity] = useState(100);
+  const [fillSignal, setFillSignal] = useState('');
+  const densityRef = useRef(100);
+  densityRef.current = preferences.fillDensityDefaults || {};
+  const rememberDensity = (next, types) => {
+    setFillDensity(next);
+    changePreferences({
+      ...preferenceRef.current,
+      fillDensityDefaults: {
+        ...densityRef.current,
+        ...Object.fromEntries(types.map((type) => [type, next])),
+      },
+    });
+  };
+  const pendingFillDefaults = useRef(new WeakMap());
+  const tagFillDensity = (elements, state, editor) => {
+    if (!editor) return;
+    const born = state.newElement;
+    if (born) {
+      if (
+        (densityRef.current[born.type] ?? 100) !== 100 &&
+        FILL_TYPES.has(born.type)
+      ) {
+        const pending = pendingFillDefaults.current.get(editor) || new Map();
+        pending.set(born.id, densityRef.current[born.type]);
+        pendingFillDefaults.current.set(editor, pending);
+      }
+      return;
+    }
+    const pending = pendingFillDefaults.current.get(editor);
+    if (
+      !pending?.size ||
+      state.resizingElement ||
+      state.selectedElementsAreBeingDragged
+    )
+      return;
+    const originDoc = active.current?.id;
+    ownerWindow.requestAnimationFrame(() => {
+      const currentState = editor.getAppState();
+      if (
+        active.current?.id !== originDoc ||
+        currentState.newElement ||
+        currentState.resizingElement ||
+        currentState.selectedElementsAreBeingDragged
+      )
+        return;
+      // Never replace native elements during pointer drawing. Excalidraw keeps
+      // a mutable gesture reference; replacing it mid-gesture strands that
+      // reference and leaves the zero-sized first frame in the scene.
+      const all = editor.getSceneElementsIncludingDeleted();
+      const changed = all.map((e) =>
+        !e.isDeleted &&
+        pending.has(e.id) &&
+        e.customData?.localCanvasFillDensity === undefined
+          ? newElementWith(e, {
+              customData: {
+                ...e.customData,
+                localCanvasFillDensity: pending.get(e.id),
+              },
+            })
+          : e,
+      );
+      pending.clear();
+      if (changed.some((e, i) => e !== all[i]))
+        editor.updateScene({
+          elements: changed,
+          captureUpdate: CaptureUpdateAction.NEVER,
+        });
+    });
+  };
+  const [libraryItemsView, setLibraryItemsView] = useState([]);
+  const searchInput = useRef(null);
+  const {
+    state: davState,
+    online: davOnline,
+    report: reportDav,
+    check: checkDav,
+  } = useDavConnection(bridge, ownerWindow);
+  const [connectionMenu, setConnectionMenu] = useState(false);
+  const connectionPanel = useRef(null);
+  useEffect(() => {
+    if (!connectionMenu) return;
+    const close = (e) => {
+      if (!connectionPanel.current?.contains(e.target))
+        setConnectionMenu(false);
+    };
+    const key = (e) => {
+      if (e.key === 'Escape') setConnectionMenu(false);
+    };
+    root.ownerDocument.addEventListener('pointerdown', close);
+    root.ownerDocument.addEventListener('keydown', key);
+    return () => {
+      root.ownerDocument.removeEventListener('pointerdown', close);
+      root.ownerDocument.removeEventListener('keydown', key);
+    };
+  }, [connectionMenu]);
   const [videoDialog, setVideoDialog] = useState(false);
   const [videoURL, setVideoURL] = useState('');
   const [videoError, setVideoError] = useState('');
   const [videoView, setVideoView] = useState(null);
   const [videoPauseEpoch, setVideoPauseEpoch] = useState(0);
+  const [balloon, setBalloon] = useState(false);
+  const [nextBalloon, setNextBalloon] = useState(1);
+  const balloonPointer = useRef(null),
+    spacePressed = useRef(false);
+  const [arrangeDialog, setArrangeDialog] = useState(false);
+  const [arrangeMode, setArrangeMode] = useState('grid');
+  const [arrangeGap, setArrangeGap] = useState(32);
+  const [arrangeScene, setArrangeScene] = useState(false);
+  const [arrangeIds, setArrangeIds] = useState([]);
   const [dropFolder, setDropFolder] = useState(undefined);
-  const [widths, setWidths] = useState({ left: 240, right: 230 });
+  const [widths, setWidths] = useState({
+    left: 240,
+    right: 230,
+  });
   const fileDrag = useRef(null),
     resizeDrag = useRef(null),
     widthRef = useRef(widths);
@@ -216,19 +433,25 @@ function App() {
   };
   const presentation = useRef(false),
     savedView = useRef(null),
-    inkApi = useRef(null);
+    inkApi = useRef(null),
+    inkStage = useRef(null);
   const presentationTimer = useRef(null);
   const inkStyle = useRef({
     currentItemStrokeColor: '#e03131',
     currentItemStrokeWidth: 2,
     currentItemOpacity: 100,
     currentItemBackgroundColor: 'transparent',
+    currentItemRoughness: 1,
+    currentItemStrokeStyle: 'solid',
+    currentItemFillStyle: 'hachure',
   });
   const latest = useRef({});
   const clearInk = () => {
     inkApi.current?.updateScene({
       elements: [],
-      appState: { selectedElementIds: {} },
+      appState: {
+        selectedElementIds: {},
+      },
       captureUpdate: CaptureUpdateAction.NEVER,
     });
     inkApi.current?.history.clear();
@@ -237,7 +460,16 @@ function App() {
   const renameScene = (id, value) => {
     const title = value.trim();
     if (title)
-      updateScenes(scenes.map((s) => (s.id === id ? { ...s, title } : s)));
+      updateScenes(
+        scenes.map((s) =>
+          s.id === id
+            ? {
+                ...s,
+                title,
+              }
+            : s,
+        ),
+      );
     setEditingScene(null);
   };
   const api = useRef(null),
@@ -266,36 +498,60 @@ function App() {
     if (frame.current !== null) ownerWindow.cancelAnimationFrame(frame.current);
     frame.current = null;
   };
+  const pendingSave = useRef(null);
   const flush = () => {
     ownerWindow.clearTimeout(timer.current);
+    if (pendingSave.current) return pendingSave.current.then(() => flush());
     if (!dirty.current || !active.current) return;
-    try {
-      active.current.revision = bridge.save(
-        active.current.id,
-        active.current.data,
-        active.current.revision,
+    const current = active.current,
+      data = current.data;
+    const finish = (revision) => {
+      current.revision = revision;
+      if (active.current === current && current.data === data)
+        dirty.current = false;
+      setStatus(
+        dirty.current
+          ? __ui('正在保存…')
+          : bridge.kind === 'web'
+            ? __ui('已保存到 NAS 工作区')
+            : __ui('已保存到本机'),
       );
-      dirty.current = false;
-      setStatus('已保存到本机');
-    } catch (e) {
-      setStatus('保存失败');
+    };
+    const fail = (e) => {
+      setStatus(__ui('保存失败'));
       setError(e.message);
       throw e;
+    };
+    try {
+      const result = bridge.save(current.id, data, current.revision);
+      if (result?.then) {
+        const task = result
+          .then(finish)
+          .catch(fail)
+          .finally(() => {
+            pendingSave.current = null;
+          });
+        pendingSave.current = task;
+        return task;
+      }
+      finish(result);
+    } catch (e) {
+      fail(e);
     }
   };
   const changed = (data) => {
     if (!active.current) return;
     active.current.data = data;
     dirty.current = true;
-    setStatus('正在保存…');
+    setStatus(__ui('正在保存…'));
     ownerWindow.clearTimeout(timer.current);
     timer.current = ownerWindow.setTimeout(() => {
-      try {
-        flush();
-      } catch {}
+      Promise.resolve()
+        .then(flush)
+        .catch(() => {});
     }, 500);
   };
-  const manualSave = (writeFile = true) => {
+  const manualSave = async (writeFile = true) => {
     if (
       !api.current ||
       !active.current ||
@@ -327,9 +583,12 @@ function App() {
         zoom: state.zoom,
       },
     });
-    flush();
-    if (writeFile && bridge.saveFile(active.current.id, active.current.data))
-      setStatus('已保存到原文件');
+    await flush();
+    if (
+      writeFile &&
+      (await bridge.saveFile(active.current.id, active.current.data))
+    )
+      setStatus(__ui('已保存到原文件'));
   };
   const saveAs = async () => {
     if (
@@ -340,24 +599,24 @@ function App() {
       storagePending
     )
       return;
-    manualSave(false);
+    await manualSave(false);
     const link = await bridge.invoke(
       'saveAsDocument',
       active.current.id,
       active.current.data,
     );
-    if (link) setStatus('已另存为文件');
+    if (link) setStatus(__ui('已另存为文件'));
   };
   const switchDoc = async (id) => {
     if (busy) return;
     if (active.current?.id === id && api.current) {
-      flush();
+      await flush();
       setFolder(nodes.find((node) => node.id === id)?.parent || null);
       return;
     }
     setBusy(true);
     try {
-      flush();
+      await flush();
       stop();
       setSelecting(null);
       setSelection(null);
@@ -367,18 +626,35 @@ function App() {
       setSceneDeletion(null);
       setExportMenu(false);
       setExportRegion(null);
+      setBalloon(false);
+      setOverview(null);
+      sceneArchive.current.clear();
+      sceneObserved.current = false;
+      setCascadeNotice(null);
       setVideoView(null);
       const next = await bridge.invoke('read', id);
+      const materialLibrary = await bridge.invoke('libraryRead', id);
+      next.data.libraryItems = materialLibrary.libraryItems;
+      await bridge.invoke('setEmbedOrigins', []);
+      setApprovedOrigins([]);
+      const origins = embedOrigins(next.data.elements);
+      setConsent(origins.length ? origins : null);
       api.current = null;
       setEditorReady(false);
       setEditorEpoch((value) => value + 1);
       active.current = next;
+      setNextBalloon(next.data.balloonNext || 1);
+      setLibraryItemsView(next.data.libraryItems || []);
       dirty.current = false;
       setScenes(next.data.scenes);
       setDoc(next);
-      setReadOnly(false);
+      setReadOnly(preferenceRef.current.startReadOnly);
       setFolder(next.parent || null);
-      setStatus('已保存到本机');
+      setStatus(
+        bridge.kind === 'web'
+          ? __ui('已保存到 NAS 工作区')
+          : __ui('已保存到本机'),
+      );
       await bridge.invoke('setSetting', 'activeDocument', id);
     } finally {
       setBusy(false);
@@ -387,11 +663,24 @@ function App() {
   useEffect(() => {
     if (!bridge) {
       setError(
-        '请运行桌面应用：先 npm run build，再 npm start。浏览器预览不具备本地存储接口。',
+        __ui(
+          '请运行桌面应用：先 npm run build，再 npm start。浏览器预览不具备本地存储接口。',
+        ),
       );
       return;
     }
     run(async () => {
+      const savedPrefs = await bridge.invoke('getSetting', 'appPreferences');
+      try {
+        const value = {
+          ...defaults,
+          ...JSON.parse(savedPrefs || '{}'),
+        };
+        setLanguage(value.language);
+        preferenceRef.current = value;
+        setPreferences(value);
+      } catch {}
+      setPreferencesReady(true);
       const theme = themeId(await bridge.invoke('getSetting', 'uiTheme'));
       setUITheme(theme);
       setCanvasDark(THEMES[theme].dark);
@@ -418,6 +707,14 @@ function App() {
       }
       const collapsed = await bridge.invoke('getSetting', 'collapsedFolders');
       const sorting = await bridge.invoke('getSetting', 'treeSort');
+      try {
+        const order = JSON.parse(
+          (await bridge.invoke('getSetting', 'toolbarOrder')) || '[]',
+        );
+        if (Array.isArray(order)) setToolbarOrder(order);
+      } catch {}
+      const davInfo = await bridge.invoke('webdavInfo');
+      reportDav(davInfo ? 'configured' : 'unconfigured');
       if (SORT_MODES.includes(sorting)) setSortMode(sorting);
       if (Array.isArray(collapsed)) setCollapsedFolders(collapsed);
       const saved = await bridge.invoke('getSetting', 'activeDocument');
@@ -426,11 +723,19 @@ function App() {
         list.find((n) => n.id === saved && !n.deleted)?.id ||
         list.find((n) => n.kind === 'document' && !n.deleted)?.id;
       if (id) await switchDoc(id);
-      else setStatus('请创建白板');
+      else setStatus(__ui('请创建白板'));
     });
     const close = (e) => {
+      if (bridge.kind === 'web' && (dirty.current || pendingSave.current)) {
+        Promise.resolve()
+          .then(flush)
+          .catch(() => {});
+        e.preventDefault();
+        e.returnValue = '';
+        return;
+      }
       try {
-        flush();
+        /* sync desktop close */ flush();
       } catch {
         e.preventDefault();
         e.returnValue = '';
@@ -461,7 +766,9 @@ function App() {
         e.preventDefault();
         e.stopPropagation();
         api.current?.updateScene({
-          appState: { openDialog: null },
+          appState: {
+            openDialog: null,
+          },
           captureUpdate: CaptureUpdateAction.NEVER,
         });
         return;
@@ -492,6 +799,17 @@ function App() {
       }
       if (
         (e.metaKey || e.ctrlKey) &&
+        e.key.toLowerCase() === 'f' &&
+        !presentation.current
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        setFileSidebar(true);
+        ownerWindow.requestAnimationFrame(() => searchInput.current?.focus());
+        return;
+      }
+      if (
+        (e.metaKey || e.ctrlKey) &&
         e.key.toLowerCase() === 's' &&
         !e.altKey
       ) {
@@ -503,9 +821,9 @@ function App() {
       }
     };
     const periodic = ownerWindow.setInterval(() => {
-      try {
-        flush();
-      } catch {}
+      Promise.resolve()
+        .then(flush)
+        .catch(() => {});
     }, 2000);
     ownerWindow.addEventListener('beforeunload', close);
     ownerWindow.addEventListener('keydown', key);
@@ -518,12 +836,52 @@ function App() {
       stop();
     };
   }, []);
+  useEffect(() => {
+    if (
+      !preferencesReady ||
+      !preferences.autoCheckUpdates ||
+      bridge.kind === 'web'
+    )
+      return;
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const info = await bridge.invoke(
+          'checkUpdates',
+          preferenceRef.current.updateChannel,
+        );
+        if (!cancelled && info.status === 'available') {
+          setUpdateAvailable(info.candidate.version);
+          if (
+            info.candidate?.asset &&
+            preferenceRef.current.autoDownloadUpdates
+          )
+            await bridge.invoke('downloadUpdate');
+        }
+      } catch {}
+    };
+    const timeout = ownerWindow.setTimeout(check, 5000),
+      interval = ownerWindow.setInterval(check, 6 * 60 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      ownerWindow.clearTimeout(timeout);
+      ownerWindow.clearInterval(interval);
+    };
+  }, [
+    preferencesReady,
+    preferences.autoCheckUpdates,
+    preferences.autoDownloadUpdates,
+    preferences.updateChannel,
+  ]);
   const updateScenes = (next) => {
     setScenes(next);
     setSelectedScenes((ids) =>
       ids.filter((id) => next.some((scene) => scene.id === id)),
     );
-    changed({ ...active.current.data, scenes: next });
+    changed({
+      ...active.current.data,
+      scenes: next,
+    });
   };
   const addScene = (rect) => {
     if (selecting && selecting !== 'new')
@@ -531,7 +889,10 @@ function App() {
         scenes.map((s) => {
           if (s.id !== selecting) return s;
           const { binding, ...fixed } = s;
-          return { ...fixed, rect };
+          return {
+            ...fixed,
+            rect,
+          };
         }),
       );
     else
@@ -539,7 +900,7 @@ function App() {
         ...scenes,
         {
           id: ownerWindow.crypto.randomUUID(),
-          title: `场景 ${scenes.length + 1}`,
+          title: '' + __ui('场景 ') + (scenes.length + 1),
           rect,
         },
       ]);
@@ -563,14 +924,18 @@ function App() {
     const animate = (now) => {
       const t = Math.min(
           1,
-          (now - began) / (presentation.current ? duration : 500),
+          preferenceRef.current.reduceMotion
+            ? 1
+            : (now - began) / (presentation.current ? duration : 500),
         ),
         v = interpolate(from, to, t);
       api.current?.updateScene({
         appState: {
           scrollX: v.scrollX,
           scrollY: v.scrollY,
-          zoom: { value: v.zoom },
+          zoom: {
+            value: v.zoom,
+          },
         },
         captureUpdate: CaptureUpdateAction.NEVER,
       });
@@ -578,7 +943,9 @@ function App() {
         appState: {
           scrollX: v.scrollX,
           scrollY: v.scrollY,
-          zoom: { value: v.zoom },
+          zoom: {
+            value: v.zoom,
+          },
         },
         captureUpdate: CaptureUpdateAction.NEVER,
       });
@@ -591,18 +958,217 @@ function App() {
     const elements = api.current.getSceneElements();
     const binding = selectedBinding(elements, api.current.getAppState());
     if (!binding.elementIds.length) {
-      api.current.setActiveTool({ type: 'selection' });
-      setStatus('先在画布选中元素或组合，再点“选择元素”添加场景');
+      api.current.setActiveTool({
+        type: 'selection',
+      });
+      setStatus(__ui('先在画布选中元素或组合，再点“选择元素”添加场景'));
       return;
     }
     const scene = {
       id: ownerWindow.crypto.randomUUID(),
-      title: `元素场景 ${scenes.length + 1}`,
-      rect: { x: 0, y: 0, width: 1, height: 1 },
+      title: '' + __ui('元素场景 ') + (scenes.length + 1),
+      rect: {
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 1,
+      },
       binding,
     };
     updateScenes(followScenes([...scenes, scene], elements, getCommonBounds));
   };
+  const toggleBalloon = () => {
+    if (!api.current || readOnly || presenting) return;
+    const enabled = !balloon;
+    setBalloon(enabled);
+    api.current.setActiveTool(
+      enabled
+        ? {
+            type: 'ellipse',
+            locked: true,
+          }
+        : {
+            type: 'selection',
+          },
+    );
+    api.current.updateScene({
+      appState: {
+        selectedElementIds: {},
+        selectedGroupIds: {},
+        activeEmbeddable: null,
+      },
+      captureUpdate: CaptureUpdateAction.NEVER,
+    });
+  };
+  const setBalloonNumber = (value) => {
+    setNextBalloon(value);
+    try {
+      const number = balloonNumber(value);
+      changed({
+        ...active.current.data,
+        balloonNext: number,
+      });
+    } catch {}
+  };
+  useEffect(() => {
+    const down = (e) => {
+      if (e.code === 'Space') spacePressed.current = true;
+      if (e.key === 'Escape' && balloon) {
+        setBalloon(false);
+        balloonPointer.current = null;
+        api.current?.setActiveTool({
+          type: 'selection',
+        });
+      }
+    };
+    const up = (e) => {
+      if (e.code === 'Space') spacePressed.current = false;
+    };
+    const blur = () => {
+      spacePressed.current = false;
+      balloonPointer.current = null;
+    };
+    ownerWindow.addEventListener('keydown', down, true);
+    ownerWindow.addEventListener('keyup', up, true);
+    ownerWindow.addEventListener('blur', blur);
+    return () => {
+      ownerWindow.removeEventListener('keydown', down, true);
+      ownerWindow.removeEventListener('keyup', up, true);
+      ownerWindow.removeEventListener('blur', blur);
+    };
+  }, [balloon]);
+  const placeBalloon = (event) => {
+    const began = balloonPointer.current;
+    if (!began || began.id !== event.pointerId) return;
+    balloonPointer.current = null;
+    event.preventDefault();
+    event.stopPropagation();
+    if (
+      Math.hypot(event.clientX - began.x, event.clientY - began.y) > 6 ||
+      !api.current ||
+      readOnly ||
+      presenting
+    )
+      return;
+    run(() => {
+      const number = balloonNumber(nextBalloon),
+        state = api.current.getAppState();
+      const point = viewportCoordsToSceneCoords(event, state);
+      const added = circularBalloons(
+        convertToExcalidrawElements([
+          {
+            ...balloonSkeleton(
+              point,
+              state,
+              number,
+              active.current.data.balloonSize,
+            ),
+            customData: {
+              localCanvasBalloon: true,
+              localCanvasFillDensity: densityRef.current.balloon ?? 100,
+            },
+          },
+        ]),
+        point,
+      );
+      const group = ownerWindow.crypto.randomUUID();
+      const members = added.map((el) =>
+        newElementWith(el, {
+          groupIds: [group],
+          ...(el.type === 'ellipse'
+            ? {
+                customData: {
+                  ...el.customData,
+                  localCanvasBalloon: true,
+                },
+              }
+            : {}),
+        }),
+      );
+      const following = number === 999999 ? number : number + 1;
+      // Write metadata before the editor callback serializes the same insertion.
+      active.current.data = {
+        ...active.current.data,
+        balloonNext: following,
+      };
+      setNextBalloon(following);
+      api.current.updateScene({
+        elements: [
+          ...api.current.getSceneElementsIncludingDeleted(),
+          ...members,
+        ],
+        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+      });
+    });
+  };
+  const openArrange = () => {
+    if (!api.current || readOnly || presenting) return;
+    setBalloon(false);
+    setArrangeIds(
+      selectedBinding(api.current.getSceneElements(), api.current.getAppState())
+        .elementIds,
+    );
+    setArrangeDialog(true);
+  };
+  const applyArrange = () =>
+    run(() => {
+      if (!api.current || readOnly || presenting) return;
+      const original = api.current.getSceneElementsIncludingDeleted();
+      const result = arrangeElements(
+        original,
+        arrangeIds,
+        arrangeMode,
+        Number(arrangeGap),
+        getCommonBounds,
+      );
+      if (original.some((el) => result.moves.has(el.id) && el.locked))
+        throw new Error(__ui('所选元素或组合包含锁定元素，请先解锁'));
+      const elements = original.map((el) =>
+        result.moves.has(el.id)
+          ? newElementWith(el, result.moves.get(el.id))
+          : el,
+      );
+      api.current.updateScene({
+        elements,
+        appState: {
+          selectedElementIds: Object.fromEntries(
+            result.ids.map((id) => [id, true]),
+          ),
+        },
+        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+      });
+      if (arrangeScene) {
+        const scene = {
+          id: ownerWindow.crypto.randomUUID(),
+          title: '' + __ui('元素场景 ') + (scenes.length + 1),
+          rect: {
+            x: 0,
+            y: 0,
+            width: 1,
+            height: 1,
+          },
+          binding: {
+            elementIds: result.ids,
+            groupIds: [],
+          },
+        };
+        updateScenes(
+          followScenes(
+            [...active.current.data.scenes, scene],
+            elements,
+            getCommonBounds,
+          ),
+        );
+      }
+      setArrangeDialog(false);
+      setStatus(
+        '' +
+          __ui('已整理 ') +
+          result.unitCount +
+          __ui(' 个元素或组合') +
+          (arrangeScene ? '并添加到演示列表' : ''),
+      );
+    });
   const rebuildSceneBinding = (id) => {
     if (!api.current || !active.current) return;
     stop();
@@ -610,19 +1176,24 @@ function App() {
     const binding = selectedBinding(elements, api.current.getAppState());
     setSceneMenu(null);
     if (!binding.elementIds.length) {
-      setStatus('先在画布选中元素或组合，再右键场景选择“重建跟随”');
+      setStatus(__ui('先在画布选中元素或组合，再右键场景选择“重建跟随”'));
       return;
     }
     updateScenes(
       followScenes(
         scenes.map((scene) =>
-          scene.id === id ? { ...scene, binding } : scene,
+          scene.id === id
+            ? {
+                ...scene,
+                binding,
+              }
+            : scene,
         ),
         elements,
         getCommonBounds,
       ),
     );
-    setStatus('已按当前所选元素或组合重建场景跟随');
+    setStatus(__ui('已按当前所选元素或组合重建场景跟随'));
   };
   const exitPresentation = async () => {
     setVideoPauseEpoch((value) => value + 1);
@@ -675,7 +1246,11 @@ function App() {
       return;
     const now = ownerWindow.performance.now(),
       previous = middleClick.current;
-    middleClick.current = { time: now, x: event.clientX, y: event.clientY };
+    middleClick.current = {
+      time: now,
+      x: event.clientX,
+      y: event.clientY,
+    };
     if (
       previous &&
       now - previous.time < 400 &&
@@ -687,14 +1262,63 @@ function App() {
       setAutoPlay(false);
       const elements = api.current.getSceneElements();
       if (!elements.length) return;
-      const options = {
-        fitToViewport: true,
-        viewportZoomFactor: 0.85,
-        maxZoom: 1,
-        animate: false,
+      const fitAll = () => {
+        const state = api.current.getAppState();
+        const side =
+          !presentation.current &&
+          stage.current?.querySelector('.default-sidebar');
+        const availableWidth = Math.max(
+          1,
+          state.width - (side ? side.getBoundingClientRect().width : 0),
+        );
+        const view = overviewView(
+          getCommonBounds(elements),
+          availableWidth,
+          state.height,
+        );
+        if (!view) return;
+        api.current.updateScene({
+          appState: view,
+          captureUpdate: CaptureUpdateAction.NEVER,
+        });
+        inkApi.current?.updateScene({
+          appState: view,
+          captureUpdate: CaptureUpdateAction.NEVER,
+        });
       };
-      api.current.scrollToContent(elements, options);
-      inkApi.current?.scrollToContent(elements, options);
+      if (presentation.current) {
+        fitAll();
+        return;
+      }
+      if (overview) {
+        const state = api.current.getAppState(),
+          point = viewportCoordsToSceneCoords(event, state),
+          zoom = overview.zoom;
+        const view = {
+          zoom: {
+            value: zoom,
+          },
+          scrollX: state.width / (2 * zoom) - point.x,
+          scrollY: state.height / (2 * zoom) - point.y,
+        };
+        api.current.updateScene({
+          appState: view,
+          captureUpdate: CaptureUpdateAction.NEVER,
+        });
+        api.current.setActiveTool({
+          type: 'selection',
+        });
+        setOverview(null);
+        return;
+      }
+      setOverview({
+        zoom: api.current.getAppState().zoom.value,
+      });
+      setBalloon(false);
+      api.current.setActiveTool({
+        type: 'hand',
+      });
+      fitAll();
     }
   };
   const confirmSceneDeletion = async () => {
@@ -717,7 +1341,46 @@ function App() {
       else setCurrentScene(null);
     }
   };
-  latest.current = { exitPresentation, step, manualSave, saveAs };
+  const finishSceneDrag = () => {
+    const id = drag.current,
+      position = dropPosition.current;
+    drag.current = null;
+    markDrop(null);
+    if (!id || position === null) return;
+    const source = scenes.find((s) => s.id === id),
+      from = scenes.findIndex((s) => s.id === id);
+    if (!source) return;
+    const next = scenes.filter((s) => s.id !== id),
+      index = position - (from < position ? 1 : 0);
+    if (index !== from) {
+      next.splice(index, 0, source);
+      updateScenes(next);
+    }
+  };
+  latest.current = {
+    exitPresentation,
+    step,
+    manualSave,
+    saveAs,
+    finishSceneDrag,
+  };
+  useEffect(() => {
+    // Completing a drag at the window also covers native fullscreen transitions
+    // and a captured handle being re-rendered while the layers panel changes.
+    const finish = () => {
+      if (drag.current) latest.current.finishSceneDrag();
+    };
+    const cancel = () => {
+      drag.current = null;
+      markDrop(null);
+    };
+    ownerWindow.addEventListener('pointerup', finish, true);
+    ownerWindow.addEventListener('pointercancel', cancel, true);
+    return () => {
+      ownerWindow.removeEventListener('pointerup', finish, true);
+      ownerWindow.removeEventListener('pointercancel', cancel, true);
+    };
+  }, []);
   useEffect(() => {
     const changedFullscreen = () => {
       if (!root.ownerDocument.fullscreenElement && presentation.current)
@@ -732,8 +1395,10 @@ function App() {
   }, []);
   const beginPresentation = async () => {
     if (!api.current || !scenes.length)
-      throw new Error('编辑器尚未准备好，请重新选择白板后重试');
-    flush();
+      throw new Error(__ui('编辑器尚未准备好，请重新选择白板后重试'));
+    await flush();
+    setOverview(null);
+    setBalloon(false);
     const state = api.current.getAppState();
     savedView.current = {
       scrollX: state.scrollX,
@@ -775,15 +1440,20 @@ function App() {
     loopPresentation,
   ]);
   useEffect(() => {
-    if (presenting && pen)
-      inkApi.current?.setActiveTool({ type: 'freedraw', locked: true });
+    if (presenting && pen) {
+      inkApi.current?.setActiveTool({
+        type: 'freedraw',
+        locked: true,
+      });
+      inkStage.current?.focus();
+    }
   }, [presenting, pen]);
   const toggleSidebar = () => {
     setSidebar(!sidebar);
     run(() => bridge.invoke('setSetting', 'sceneSidebar', !sidebar));
   };
   const exportPDF = async (byScenes) => {
-    flush();
+    await flush();
     stop();
     setBusy(true);
     try {
@@ -854,7 +1524,7 @@ function App() {
     }
   };
   const exportGraphic = async (format) => {
-    flush();
+    await flush();
     stop();
     setBusy(true);
     try {
@@ -862,7 +1532,10 @@ function App() {
       let value;
       if (format === 'svg') value = (await exportToSvg(options)).outerHTML;
       else {
-        const blob = await exportToBlob({ ...options, mimeType: 'image/png' });
+        const blob = await exportToBlob({
+          ...options,
+          mimeType: 'image/png',
+        });
         value = await new Promise((resolve, reject) => {
           const reader = new ownerWindow.FileReader();
           reader.onload = () => resolve(reader.result);
@@ -876,24 +1549,36 @@ function App() {
     }
   };
   const ask = (title, value, submit, options) =>
-    setForm({ title, value, submit, options });
-  const create = (kind, parent = folder) =>
-    ask(kind === 'folder' ? '新建文件夹' : '新建白板', '', async (title) => {
-      flush();
-      const id = await bridge.invoke('create', kind, parent, title);
-      await refresh();
-      if (kind === 'document') await switchDoc(id);
+    setForm({
+      title,
+      value,
+      submit,
+      options,
     });
+  const create = (kind, parent = folder) =>
+    ask(
+      kind === 'folder' ? __ui('新建文件夹') : __ui('新建白板'),
+      '',
+      async (title) => {
+        await flush();
+        const id = await bridge.invoke('create', kind, parent, title);
+        await refresh();
+        if (kind === 'document') await switchDoc(id);
+      },
+    );
   const move = (node) =>
     ask(
-      '移动到文件夹',
+      __ui('移动到文件夹'),
       node.parent || '',
       async (parent) => {
         await bridge.invoke('move', node.id, parent || null);
         await refresh();
       },
       [
-        { id: '', title: '根目录' },
+        {
+          id: '',
+          title: __ui('根目录'),
+        },
         ...nodes.filter(
           (n) => n.kind === 'folder' && !n.deleted && n.id !== node.id,
         ),
@@ -916,7 +1601,10 @@ function App() {
   };
   const menuMode = (mode) => {
     setMenuError('');
-    setFileMenu({ ...fileMenu, mode });
+    setFileMenu({
+      ...fileMenu,
+      mode,
+    });
   };
   const performMenuAction = async (action) => {
     if (menuPending) return;
@@ -932,7 +1620,7 @@ function App() {
     }
   };
   const moveNode = async (id, parent) => {
-    flush();
+    await flush();
     await bridge.invoke('move', id, parent);
     setCollapsedFolders((ids) => ids.filter((value) => value !== parent));
     await refresh();
@@ -968,7 +1656,7 @@ function App() {
     <div
       className={`sidebar-resizer ${side}`}
       role="separator"
-      aria-label={side === 'left' ? '左侧栏宽度' : '右侧栏宽度'}
+      aria-label={side === 'left' ? __ui('左侧栏宽度') : __ui('右侧栏宽度')}
       aria-orientation="vertical"
       aria-valuenow={widths[side]}
       tabIndex={0}
@@ -990,7 +1678,10 @@ function App() {
                 (side === 'left' ? 1 : -1),
           ),
         );
-        widthRef.current = { ...widthRef.current, [side]: value };
+        widthRef.current = {
+          ...widthRef.current,
+          [side]: value,
+        };
         setWidths(widthRef.current);
       }}
       onPointerUp={() => {
@@ -1014,7 +1705,10 @@ function App() {
             widthRef.current[side] + direction * 10,
           ),
         );
-        widthRef.current = { ...widthRef.current, [side]: value };
+        widthRef.current = {
+          ...widthRef.current,
+          [side]: value,
+        };
         setWidths(widthRef.current);
         run(() =>
           bridge.invoke('setSetting', 'sidebarWidths', widthRef.current),
@@ -1106,21 +1800,28 @@ function App() {
             if (n.kind === 'folder') dropOn(event, n.id);
           }}
         >
-          {Array.from({ length: depth }, (_, level) => (
-            <span
-              key={level}
-              className="tree-guide"
-              style={{ left: 21 + level * 28 }}
-              aria-hidden="true"
-            />
-          ))}
+          {Array.from(
+            {
+              length: depth,
+            },
+            (_, level) => (
+              <span
+                key={level}
+                className="tree-guide"
+                style={{
+                  left: 21 + level * 28,
+                }}
+                aria-hidden="true"
+              />
+            ),
+          )}
           {n.kind !== 'folder' && (
             <span className="tree-toggle-spacer" aria-hidden="true" />
           )}
           {n.kind === 'folder' && (
             <button
               className="folder-toggle"
-              aria-label={`${collapsedFolders.includes(n.id) ? '展开' : '收起'} ${n.title}`}
+              aria-label={`${collapsedFolders.includes(n.id) ? __ui('展开') : __ui('收起')} ${n.title}`}
               aria-expanded={!collapsedFolders.includes(n.id)}
               disabled={
                 !nodes.some((child) => child.parent === n.id && !child.deleted)
@@ -1160,8 +1861,8 @@ function App() {
             <span className="node-name">{n.title}</span>
           </button>
           <button
-            title="操作"
-            aria-label={`${n.title} 操作`}
+            title={__ui('操作')}
+            aria-label={'' + n.title + __ui(' 操作')}
             aria-haspopup="menu"
             aria-expanded={fileMenu?.node?.id === n.id}
             onClick={(event) => openFileMenu(event, n)}
@@ -1175,7 +1876,7 @@ function App() {
       </React.Fragment>
     ));
   const remove = async (node) => {
-    flush();
+    await flush();
     await bridge.invoke('trash', node.id, true);
     if (doc?.id === node.id) {
       stop();
@@ -1186,6 +1887,37 @@ function App() {
     if (folder === node.id) setFolder(null);
     await refresh();
   };
+  const approveOrigins = async (origins) => {
+    const next = [...new Set([...approvedOrigins, ...origins])];
+    await bridge.invoke('setEmbedOrigins', next);
+    setApprovedOrigins(next);
+    setConsent(null);
+  };
+  const importLibrary = async (value) => {
+    if (!api.current) return;
+    const file = value || (await bridge.invoke('importLibrary'));
+    if (file)
+      await api.current.updateLibrary({
+        libraryItems: new Blob([JSON.stringify(file)], {
+          type: 'application/json',
+        }),
+        merge: true,
+        openLibraryMenu: true,
+      });
+  };
+  const browseLibraries = () => run(() => bridge.invoke('openLibraries'));
+  useEffect(() => {
+    const timer = ownerWindow.setInterval(() => {
+      if (!active.current || libraryInstall) return;
+      bridge
+        .invoke('pendingLibrary')
+        .then((value) => {
+          if (value) setLibraryInstall(value);
+        })
+        .catch(() => {});
+    }, 1200);
+    return () => ownerWindow.clearInterval(timer);
+  }, [libraryInstall]);
   return (
     <div
       data-theme={uiTheme}
@@ -1199,40 +1931,160 @@ function App() {
       <aside className="files">
         {resizeHandle('left')}
         <div className="brand">
-          <img className="logo" src="./app-icon.png" alt="Canvas 标志" />
+          <button
+            className="logo-settings"
+            aria-label={__ui('打开设置')}
+            title={__ui('设置')}
+            onClick={() => setSettings(true)}
+          >
+            <img
+              className="logo"
+              src="./app-icon.png"
+              alt={__ui('Canvas 标志')}
+            />
+            {updateAvailable && (
+              <span
+                className="update-dot"
+                title={'' + __ui('有可用更新 ') + updateAvailable}
+                aria-hidden="true"
+              />
+            )}
+          </button>
           <div>
-            Local Canvas<small>本地无限画布 · v0.4.1</small>
+            Local Canvas
+            <small>
+              {__ui('本地无限画布 \xB7 v')}
+              {import.meta.env.VITE_APP_VERSION || '0.4.1'}
+            </small>
           </div>
         </div>
         <div className="section-title">
-          工作区 <span>离线 · 本机</span>
+          {__ui('工作区')}{' '}
+          <div className="connection-status" ref={connectionPanel}>
+            <button
+              className="network-status"
+              aria-label={__ui('连接状态')}
+              aria-expanded={connectionMenu}
+              onClick={() => {
+                setConnectionMenu(!connectionMenu);
+                if (!connectionMenu) checkDav();
+              }}
+            >
+              <i className={davOnline ? 'online' : ''} aria-hidden="true" />
+              {davOnline ? __ui('在线') : __ui('离线')}
+            </button>
+            {connectionMenu && (
+              <section
+                className="connection-popover"
+                aria-label={__ui('连接详情')}
+              >
+                <strong>{__ui('连接状态')}</strong>
+                <p>
+                  {davOnline ? __ui('WebDAV 已连接') : __ui('WebDAV 未连接')}
+                </p>
+                <p>
+                  {__ui(
+                    {
+                      unconfigured: 'WebDAV 未配置',
+                      configured: 'WebDAV 已配置，尚未验证连接',
+                      transferring: 'WebDAV 正在传输',
+                      success: 'WebDAV 最近连接成功',
+                      error: 'WebDAV 最近操作失败',
+                    }[davState.status],
+                  )}
+                </p>
+                {davState.time && <small>{davState.time}</small>}
+                <p>
+                  {__ui(
+                    '状态按 WebDAV 实际连接验证，约每分钟复查。立即同步上传完整备份，不进行双向合并或覆盖。',
+                  )}
+                </p>
+                <button
+                  disabled={
+                    davState.status === 'unconfigured' ||
+                    davState.status === 'transferring'
+                  }
+                  onClick={() =>
+                    run(async () => {
+                      reportDav('transferring');
+                      try {
+                        await bridge.invoke('webdavTest');
+                        reportDav('success');
+                      } catch (e) {
+                        reportDav('error');
+                        throw e;
+                      }
+                    })
+                  }
+                >
+                  {__ui('测试连接')}
+                </button>
+                <button
+                  disabled={
+                    davState.status === 'unconfigured' ||
+                    davState.status === 'transferring'
+                  }
+                  onClick={() =>
+                    run(async () => {
+                      reportDav('transferring');
+                      try {
+                        await flush();
+                        await bridge.invoke('webdavBackup');
+                        reportDav('success');
+                      } catch (e) {
+                        reportDav('error');
+                        throw e;
+                      }
+                    })
+                  }
+                >
+                  {__ui('立即同步（上传备份）')}
+                </button>
+                <button
+                  onClick={() => {
+                    setConnectionMenu(false);
+                    setSettings(true);
+                  }}
+                >
+                  {__ui('打开设置')}
+                </button>
+              </section>
+            )}
+          </div>
         </div>
         <div className="actions">
           <button
             className="workspace-save"
-            title="保存内容与当前视图（Cmd/Ctrl+S）"
+            title={__ui('保存内容与当前视图（Cmd/Ctrl+S）')}
             disabled={!doc || busy}
             onClick={() => run(manualSave)}
           >
-            保存
+            {__ui('保存 ')}
           </button>
           <button disabled={!doc || busy} onClick={() => run(saveAs)}>
-            另存为
+            {__ui('另存为 ')}
           </button>
         </div>
         <button
           className="open-document"
           onClick={() =>
             run(async () => {
-              flush();
+              await flush();
               const id = await bridge.invoke('openDocument', folder);
               await refresh();
               if (id) await switchDoc(id);
             })
           }
         >
-          打开文件…
+          {__ui('打开文件… ')}
         </button>
+        <CanvasSearch
+          api={api}
+          elements={videoView?.elements || []}
+          disabled={!doc || presenting}
+          inputRef={searchInput}
+          documentId={doc?.id}
+        />
         <button
           className={`root ${folder === null ? 'selected' : ''} ${dropFolder === null ? 'drop-target' : ''}`}
           onClick={() => setFolder(null)}
@@ -1244,14 +2096,15 @@ function App() {
             }
           }}
           onDrop={(event) => dropOn(event, null)}
-          title="右键新建白板或文件夹；拖入此处移回根目录"
+          title={__ui('右键新建白板或文件夹；拖入此处移回根目录')}
         >
-          <ShellIcon name="home" theme={uiTheme} size={18} /> 根目录
+          <ShellIcon name="home" theme={uiTheme} size={18} />
+          {__ui(' 根目录 ')}
         </button>
         <label className="tree-sort">
-          目录排序
+          {__ui('目录排序 ')}
           <select
-            aria-label="目录排序"
+            aria-label={__ui('目录排序')}
             value={sortMode}
             onChange={(e) => {
               const value = e.target.value;
@@ -1259,50 +2112,51 @@ function App() {
               run(() => bridge.invoke('setSetting', 'treeSort', value));
             }}
           >
-            <option value="custom">自定义（拖拽排序）</option>
-            <option value="name">名称 A–Z</option>
-            <option value="created">创建时间（从早到晚）</option>
+            <option value="custom">{__ui('自定义（拖拽排序）')}</option>
+            <option value="name">{__ui('名称 A–Z')}</option>
+            <option value="created">{__ui('创建时间（从早到晚）')}</option>
           </select>
         </label>
         <div className="tree">{tree()}</div>
         <details className="workspace-tools">
-          <summary>工作区管理</summary>
+          <summary>{__ui('工作区管理')}</summary>
           <div className="file-tools">
-            <button onClick={() => setStorageDialog(true)}>保存位置</button>
-            <button onClick={() => setDavDialog(true)}>WebDAV 设置</button>
+            <button onClick={() => setStorageDialog(true)}>
+              {__ui('保存位置')}
+            </button>
             <button
               onClick={() =>
                 run(async () => {
-                  flush();
+                  await flush();
                   const id = await bridge.invoke('importDocument', folder);
                   await refresh();
                   if (id) await switchDoc(id);
                 })
               }
             >
-              导入文档
+              {__ui('导入文档 ')}
             </button>
-            <button onClick={() => setTrash(!trash)}>回收站</button>
+            <button onClick={() => setTrash(!trash)}>{__ui('回收站')}</button>
             <button
               onClick={() =>
                 run(async () => {
-                  flush();
+                  await flush();
                   await bridge.invoke('backup');
                 })
               }
             >
-              备份工作区
+              {__ui('备份工作区 ')}
             </button>
             <button
               onClick={() =>
                 run(async () => {
-                  flush();
+                  await flush();
                   await bridge.invoke('restore');
                   await refresh();
                 })
               }
             >
-              恢复备份
+              {__ui('恢复备份 ')}
             </button>
           </div>
         </details>
@@ -1311,8 +2165,8 @@ function App() {
         <header>
           <button
             className="left-panel-toggle"
-            aria-label={fileSidebar ? '隐藏文件栏' : '显示文件栏'}
-            title={fileSidebar ? '隐藏文件栏' : '显示文件栏'}
+            aria-label={fileSidebar ? __ui('隐藏文件栏') : __ui('显示文件栏')}
+            title={fileSidebar ? __ui('隐藏文件栏') : __ui('显示文件栏')}
             onClick={() => {
               const next = !fileSidebar;
               setFileSidebar(next);
@@ -1324,10 +2178,21 @@ function App() {
             <PanelIcon />
           </button>
           <div className="document-heading">
-            <strong>{doc?.title || '选择或创建一张白板'}</strong>
-            <span className="save-state">{status}</span>
+            <strong>{doc?.title || __ui('选择或创建一张白板')}</strong>
+            <span className="save-state">{translate(status)}</span>
           </div>
           <div className="header-actions">
+            {doc && (
+              <button
+                className="arrange-trigger"
+                disabled={!editorReady || presenting || readOnly}
+                onClick={() => openArrange()}
+                title={__ui('框选后自动等距整理')}
+              >
+                <LayoutIcon />
+                {__ui('自动整理 ')}
+              </button>
+            )}
             {doc && (
               <button
                 className="file-info-button"
@@ -1337,7 +2202,7 @@ function App() {
                   )
                 }
               >
-                文件信息
+                {__ui('文件信息 ')}
               </button>
             )}
             {doc && (
@@ -1345,19 +2210,21 @@ function App() {
                 className="file-info-button"
                 disabled={!editorReady || presenting}
                 aria-pressed={readOnly}
-                title="画布只读：禁止移动、编辑和删除全部元素；仍可平移缩放"
+                title={__ui(
+                  '画布只读：禁止移动、编辑和删除全部元素；仍可平移缩放',
+                )}
                 onClick={() => {
                   stop();
                   setReadOnly(!readOnly);
                 }}
               >
-                {readOnly ? '解除只读' : '画布只读'}
+                {readOnly ? __ui('解除只读') : __ui('画布只读')}
               </button>
             )}
             <label className="theme-picker">
               <ThemePaletteIcon />
               <select
-                aria-label="界面主题"
+                aria-label={__ui('界面主题')}
                 value={uiTheme}
                 onChange={(event) => {
                   const id = themeId(event.target.value);
@@ -1377,33 +2244,123 @@ function App() {
         </header>
         {error && (
           <div className="error" role="alert">
-            {error}
-            <button onClick={() => run(flush)}>重试保存</button>
+            {translate(error)}
+            <button onClick={() => run(flush)}>{__ui('重试保存')}</button>
+            {active.current && (
+              <button
+                onClick={() =>
+                  run(() =>
+                    bridge.invoke(
+                      'exportDocument',
+                      active.current.id,
+                      active.current.data,
+                      false,
+                    ),
+                  )
+                }
+              >
+                {__ui('导出未保存副本 ')}
+              </button>
+            )}
             <button onClick={() => setError('')}>×</button>
           </div>
         )}
         <div
-          className="canvas"
+          className={`canvas ${balloon ? 'balloon-mode' : ''}`}
           ref={stage}
-          onPointerDownCapture={fitOnMiddleDoubleClick}
+          onClickCapture={(e) => {
+            if (
+              balloon &&
+              e.target.closest('.App-toolbar') &&
+              !e.target.closest('.canvas-number-tool')
+            ) {
+              setBalloon(false);
+              balloonPointer.current = null;
+            }
+          }}
+          onContextMenuCapture={(e) => {
+            if (
+              !overview ||
+              presenting ||
+              e.target.closest(
+                'button,input,select,textarea,a,.layer-ui__wrapper',
+              )
+            )
+              return;
+            e.preventDefault();
+            e.stopPropagation();
+            e.nativeEvent.stopImmediatePropagation();
+            setOverview(null);
+            middleClick.current = null;
+            api.current?.setActiveTool({ type: 'selection' });
+          }}
+          onPointerDownCapture={(e) => {
+            if (
+              overview &&
+              !presenting &&
+              e.button === 2 &&
+              !e.target.closest(
+                'button,input,select,textarea,a,.layer-ui__wrapper',
+              )
+            ) {
+              e.preventDefault();
+              e.stopPropagation();
+              return;
+            }
+            if (e.target.closest('canvas')) stop();
+            fitOnMiddleDoubleClick(e);
+            if (
+              !balloon ||
+              presenting ||
+              readOnly ||
+              e.button !== 0 ||
+              spacePressed.current ||
+              e.ctrlKey ||
+              e.metaKey ||
+              e.altKey ||
+              e.target.closest(
+                'button,input,select,textarea,a,.layer-ui__wrapper,.excalidraw-textEditorContainer',
+              )
+            )
+              return;
+            e.preventDefault();
+            e.stopPropagation();
+            e.currentTarget.setPointerCapture(e.pointerId);
+            balloonPointer.current = {
+              id: e.pointerId,
+              x: e.clientX,
+              y: e.clientY,
+            };
+          }}
+          onPointerUpCapture={placeBalloon}
+          onPointerCancelCapture={() => {
+            balloonPointer.current = null;
+          }}
           onWheelCapture={stop}
           onKeyDownCapture={stop}
         >
           {doc ? (
             <Excalidraw
               key={`${doc.id}:${editorEpoch}`}
-              langCode="zh-CN"
+              langCode={preferences.language === 'en' ? 'en' : 'zh-CN'}
               showDeprecatedFonts
-              validateEmbeddable={(link) => !!parseVideo(link)}
+              validateEmbeddable={(link) => !!parseEmbed(link)}
               renderEmbeddable={(element) =>
-                parseVideo(element.link) ? (
-                  <div className="video-placeholder">
-                    {parseVideo(element.link).provider} 视频
-                  </div>
+                parseEmbed(element.link) ? (
+                  <VideoEmbed
+                    link={element.link}
+                    pauseEpoch={videoPauseEpoch}
+                    bridge={bridge}
+                    allowed={approvedOrigins.includes(
+                      parseEmbed(element.link)?.origin,
+                    )}
+                    requestConsent={(origin) => setConsent([origin])}
+                  />
                 ) : null
               }
               theme={canvasDark ? 'dark' : 'light'}
               UIOptions={{
+                dockedSidebarBreakpoint: 0,
                 canvasActions: {
                   saveToActiveFile: false,
                   saveAsImage: false,
@@ -1417,18 +2374,81 @@ function App() {
               }}
               initialData={{
                 ...doc.data,
-                appState: { ...doc.data.appState, collaborators: new Map() },
+                appState: {
+                  ...doc.data.appState,
+                  collaborators: new Map(),
+                },
                 scrollToContent: false,
               }}
               onLibraryChange={(libraryItems) => {
+                setLibraryItemsView(libraryItems);
+                bridge
+                  .invoke('librarySave', libraryItems)
+                  .catch((e) => setError(e.message));
                 if (active.current?.id === doc.id)
-                  changed({ ...active.current.data, libraryItems });
+                  changed({
+                    ...active.current.data,
+                    libraryItems,
+                  });
               }}
               onChange={(elements, appState, files) => {
+                setFillSignal(
+                  appState.activeTool.type +
+                    '|' +
+                    Object.keys(appState.selectedElementIds).join(',') +
+                    elements
+                      .filter((e) => appState.selectedElementIds[e.id])
+                      .map((e) => densityOf(e))
+                      .join(','),
+                );
+                tagFillDensity(elements, appState, api.current);
+                if (
+                  !appState.viewModeEnabled &&
+                  !appState.newElement &&
+                  !appState.isResizing &&
+                  !appState.resizingElement &&
+                  !appState.selectedElementsAreBeingDragged &&
+                  elements.some(
+                    (e) =>
+                      !e.isDeleted &&
+                      e.type === 'ellipse' &&
+                      e.customData?.localCanvasBalloon &&
+                      Math.abs(e.width - e.height) > 1e-6,
+                  )
+                ) {
+                  const editor = api.current,
+                    documentId = doc.id;
+                  ownerWindow.requestAnimationFrame(() => {
+                    if (
+                      !editor ||
+                      api.current !== editor ||
+                      active.current?.id !== documentId
+                    )
+                      return;
+                    const current = editor.getAppState();
+                    if (
+                      current.viewModeEnabled ||
+                      current.newElement ||
+                      current.isResizing ||
+                      current.resizingElement ||
+                      current.selectedElementsAreBeingDragged
+                    )
+                      return;
+                    const original = editor.getSceneElementsIncludingDeleted(),
+                      rounded = circularBalloons(original);
+                    if (rounded.some((e, i) => e !== original[i]))
+                      editor.updateScene({
+                        elements: rounded.map((e, i) =>
+                          e === original[i]
+                            ? e
+                            : newElementWith(original[i], e),
+                        ),
+                        captureUpdate: CaptureUpdateAction.NEVER,
+                      });
+                  });
+                }
                 if (active.current?.id === doc.id) {
-                  const videos = elements.filter(
-                    (e) => e.type === 'embeddable' && !e.isDeleted,
-                  );
+                  const videos = elements;
                   const next = {
                     elements: videos,
                     state: {
@@ -1437,15 +2457,25 @@ function App() {
                       zoom: appState.zoom,
                       width: appState.width,
                       height: appState.height,
+                      activeEmbeddable: appState.activeEmbeddable,
                     },
                   };
                   setVideoView((previous) =>
                     (!videos.length && !previous?.elements.length) ||
-                    JSON.stringify(previous) === JSON.stringify(next)
+                    (previous?.elements === elements &&
+                      previous?.state.scrollX === appState.scrollX &&
+                      previous?.state.scrollY === appState.scrollY &&
+                      previous?.state.zoom.value === appState.zoom.value &&
+                      previous?.state.width === appState.width &&
+                      previous?.state.height === appState.height &&
+                      previous?.state.activeEmbeddable ===
+                        appState.activeEmbeddable)
                       ? previous
                       : next,
                   );
                 }
+                if (balloon && appState.activeTool.type !== 'ellipse')
+                  setBalloon(false);
                 if (presentation.current || storagePending) return;
                 if (active.current?.id !== doc.id) return;
                 const data = JSON.parse(
@@ -1455,19 +2485,49 @@ function App() {
                   ...data.appState,
                   scrollX: active.current.data.appState.scrollX ?? 0,
                   scrollY: active.current.data.appState.scrollY ?? 0,
-                  zoom: active.current.data.appState.zoom ?? { value: 1 },
+                  zoom: active.current.data.appState.zoom ?? {
+                    value: 1,
+                  },
                 };
+                const previous = active.current.data;
+                const size =
+                  resizedBalloon(previous.elements, elements, appState) ||
+                  restyledBalloon(previous.elements, elements, appState);
+                const cascade = sceneObserved.current
+                  ? cascadeScenes(
+                      previous.scenes,
+                      previous.elements,
+                      elements,
+                      sceneArchive.current,
+                    )
+                  : {
+                      scenes: previous.scenes,
+                      deleted: [],
+                    };
+                sceneObserved.current = true;
                 const next = {
-                  ...active.current.data,
+                  ...previous,
+                  ...(size
+                    ? {
+                        balloonSize: size,
+                      }
+                    : {}),
                   elements: data.elements,
                   appState: data.appState,
                   files: data.files || files,
                   scenes: followScenes(
-                    active.current.data.scenes,
+                    cascade.scenes,
                     elements,
                     getCommonBounds,
                   ),
                 };
+                if (
+                  cascade.deleted.length &&
+                  !preferenceRef.current.skipCascadeNotice
+                ) {
+                  setSkipCascade(false);
+                  setCascadeNotice(cascade.deleted.map((s) => s.title));
+                }
                 if (next.scenes !== active.current.data.scenes)
                   setScenes(next.scenes);
                 if (
@@ -1476,22 +2536,30 @@ function App() {
                   changed(next);
               }}
             >
+              <DefaultSidebar docked onDock={false} />
               <MainMenu>
                 <MainMenu.DefaultItems.LoadScene />
-                <MainMenu.DefaultItems.SearchMenu />
                 <MainMenu.DefaultItems.Help />
                 <MainMenu.DefaultItems.ClearCanvas />
                 <MainMenu.Item
+                  icon={<VideoIcon />}
                   onSelect={() => {
                     setVideoError('');
                     setVideoURL('');
                     setVideoDialog(true);
                   }}
                 >
-                  嵌入网页视频
+                  {__ui('嵌入网页 / 视频 ')}
+                </MainMenu.Item>
+                <MainMenu.Item
+                  icon={<LayoutIcon />}
+                  onSelect={() => openArrange()}
+                >
+                  {__ui('自动整理元素 ')}
                 </MainMenu.Item>
                 <MainMenu.Separator />
                 <MainMenu.ItemLink
+                  icon={<GitHubMark />}
                   href="https://github.com/layzerff/excalidraw"
                   onSelect={(event) => {
                     event.preventDefault();
@@ -1510,23 +2578,119 @@ function App() {
           ) : (
             <div className="empty">
               <span>▧</span>
-              <h1>把想法放在同一张画布上</h1>
-              <p>创建白板，自由绘制，再用场景整理你的思路。</p>
-              <button onClick={() => create('document')}>创建第一张白板</button>
+              <h1>{__ui('把想法放在同一张画布上')}</h1>
+              <p>{__ui('创建白板，自由绘制，再用场景整理你的思路。')}</p>
+              <button onClick={() => create('document')}>
+                {__ui('创建第一张白板')}
+              </button>
             </div>
           )}
           {doc && (
-            <VideoLayer
-              key={doc.id}
-              bridge={bridge}
-              pauseEpoch={videoPauseEpoch}
-              elements={videoView?.elements || []}
-              state={videoView?.state}
-              interact={() => {
-                stop();
-                setPen(false);
+            <CanvasTools
+              stage={stage}
+              order={toolbarOrder}
+              onOrderChange={(order) => {
+                setToolbarOrder(order);
+                run(() =>
+                  bridge.invoke(
+                    'setSetting',
+                    'toolbarOrder',
+                    JSON.stringify(order),
+                  ),
+                );
+              }}
+              balloon={balloon}
+              toggleBalloon={toggleBalloon}
+              nextNumber={nextBalloon}
+              setNextNumber={setBalloonNumber}
+              disabled={presenting || readOnly}
+              openVideo={() => {
+                setVideoError('');
+                setVideoURL('');
+                setVideoDialog(true);
               }}
             />
+          )}
+          {doc && (
+            <FillDensity
+              stage={stage}
+              api={api}
+              value={fillDensity}
+              defaults={preferences.fillDensityDefaults}
+              setValue={rememberDensity}
+              signal={fillSignal}
+            />
+          )}
+          {presenting && pen && (
+            <FillDensity
+              stage={inkStage}
+              api={inkApi}
+              value={fillDensity}
+              defaults={preferences.fillDensityDefaults}
+              setValue={rememberDensity}
+              signal={fillSignal}
+              ink
+            />
+          )}
+          {doc && (
+            <LibraryActions
+              stage={stage}
+              api={api}
+              bridge={bridge}
+              items={libraryItemsView}
+              documentId={doc.id}
+              onError={setError}
+              browse={browseLibraries}
+              load={() => run(() => importLibrary())}
+            />
+          )}
+          {doc && (
+            <VideoControls
+              state={videoView?.state}
+              elements={videoView?.elements || []}
+              exit={() =>
+                api.current?.updateScene({
+                  appState: {
+                    activeEmbeddable: null,
+                  },
+                  captureUpdate: CaptureUpdateAction.NEVER,
+                })
+              }
+            />
+          )}
+          {overview && !presenting && (
+            <div className="overview-hint">
+              {__ui(
+                '全览定位：拖动画布，双击中键恢复编辑比例；右键保留当前视图',
+              )}{' '}
+              <button
+                onClick={() => {
+                  const st = api.current?.getAppState();
+                  if (st) {
+                    const center = {
+                      x: st.width / (2 * st.zoom.value) - st.scrollX,
+                      y: st.height / (2 * st.zoom.value) - st.scrollY,
+                    };
+                    api.current.updateScene({
+                      appState: {
+                        zoom: {
+                          value: overview.zoom,
+                        },
+                        scrollX: st.width / (2 * overview.zoom) - center.x,
+                        scrollY: st.height / (2 * overview.zoom) - center.y,
+                      },
+                      captureUpdate: CaptureUpdateAction.NEVER,
+                    });
+                    api.current.setActiveTool({
+                      type: 'selection',
+                    });
+                  }
+                  setOverview(null);
+                }}
+              >
+                {__ui('返回当前中心编辑 ')}
+              </button>
+            </div>
           )}
           {selecting && (
             <div
@@ -1567,6 +2731,24 @@ function App() {
                     setSelecting(null);
                     setSelection(null);
                     setExportMenu(true);
+                  } else if (selecting === 'arrange') {
+                    const ids = api.current
+                      .getSceneElements()
+                      .filter((el) => {
+                        if (el.locked) return false;
+                        const [x, y, r, b] = getCommonBounds([el]);
+                        return (
+                          x >= rect.x &&
+                          y >= rect.y &&
+                          r <= rect.x + rect.width &&
+                          b <= rect.y + rect.height
+                        );
+                      })
+                      .map((el) => el.id);
+                    setArrangeIds(ids);
+                    setSelecting(null);
+                    setSelection(null);
+                    setArrangeDialog(true);
                   } else addScene(rect);
                 }
               }}
@@ -1576,8 +2758,12 @@ function App() {
               }}
             >
               <div className="selection-tip">
-                {selecting === 'export' ? '拖出导出区域' : '拖出场景区域'} · Esc
-                取消
+                {selecting === 'export'
+                  ? __ui('拖出导出区域')
+                  : selecting === 'arrange'
+                    ? __ui('框住需要整理的完整元素')
+                    : __ui('拖出场景区域')}{' '}
+                {__ui('\xB7 Esc 取消 ')}
               </div>
               {selection && (
                 <div
@@ -1596,14 +2782,16 @@ function App() {
       </main>
       <aside className="scenes">
         {!presenting && resizeHandle('right')}
-        <div className="section-title">场景</div>
-        <p className="hint">为同一张白板保存不同区域，点击场景平滑导航。</p>
+        <div className="section-title">{__ui('场景')}</div>
+        <p className="hint">
+          {__ui('为同一张白板保存不同区域，点击场景平滑导航。')}
+        </p>
         <div className="scene-create">
           <button
             disabled={!doc || !scenes.length || !editorReady}
             onClick={() => run(beginPresentation)}
           >
-            ▶ 演示
+            {__ui('▶ 演示 ')}
           </button>
           <button
             disabled={!doc}
@@ -1612,14 +2800,14 @@ function App() {
               setSelecting('new');
             }}
           >
-            ＋ 框选区域
+            {__ui('＋ 框选区域 ')}
           </button>
           <button
             disabled={!doc}
             onClick={() => run(addElementScene)}
-            title="先选中画布中的元素或组合，场景将跟随它们移动"
+            title={__ui('先选中画布中的元素或组合，场景将跟随它们移动')}
           >
-            ＋ 选择元素
+            {__ui('＋ 选择元素 ')}
           </button>
           <button
             className="scene-current-view"
@@ -1628,7 +2816,7 @@ function App() {
               api.current && addScene(viewRect(api.current.getAppState()))
             }
           >
-            添加当前视图为场景
+            {__ui('添加当前视图为场景 ')}
           </button>
         </div>
         <div
@@ -1685,7 +2873,7 @@ function App() {
             >
               <button
                 className="drag-handle"
-                title="拖动排序"
+                title={__ui('拖动排序')}
                 onPointerDown={(e) => {
                   if (e.button !== 0) return;
                   e.preventDefault();
@@ -1706,17 +2894,7 @@ function App() {
                   });
                   markDrop(index < 0 ? scenes.length : index);
                 }}
-                onPointerUp={() => {
-                  if (drag.current === s.id && dropPosition.current !== null) {
-                    const next = scenes.filter((scene) => scene.id !== s.id);
-                    const index =
-                      dropPosition.current - (i < dropPosition.current ? 1 : 0);
-                    next.splice(index, 0, s);
-                    if (index !== i) updateScenes(next);
-                  }
-                  drag.current = null;
-                  markDrop(null);
-                }}
+                onPointerUp={finishSceneDrag}
                 onPointerCancel={() => {
                   drag.current = null;
                   markDrop(null);
@@ -1727,7 +2905,7 @@ function App() {
               {editingScene === s.id ? (
                 <input
                   className="scene-title-input"
-                  aria-label="场景标题"
+                  aria-label={__ui('场景标题')}
                   autoFocus
                   defaultValue={s.title}
                   maxLength={200}
@@ -1757,8 +2935,11 @@ function App() {
                   <span>{String(i + 1).padStart(2, '0')}</span>
                   <strong>{s.title}</strong>
                   {s.binding && (
-                    <small className="scene-binding" title="跟随关联元素和组合">
-                      跟随
+                    <small
+                      className="scene-binding"
+                      title={__ui('跟随关联元素和组合')}
+                    >
+                      {__ui('跟随 ')}
                     </small>
                   )}
                 </button>
@@ -1767,7 +2948,7 @@ function App() {
           ))}
         </div>
         <small className="hint">
-          拖拽排序 · Shift 连选 · 双击改名 · 右键操作。
+          {__ui('拖拽排序 \xB7 Shift 连选 \xB7 双击改名 \xB7 右键操作。 ')}
         </small>
       </aside>
       {sceneMenu && (
@@ -1782,7 +2963,10 @@ function App() {
           <div
             role="menu"
             className="scene-context-menu"
-            style={{ left: sceneMenu.x, top: sceneMenu.y }}
+            style={{
+              left: sceneMenu.x,
+              top: sceneMenu.y,
+            }}
             onPointerDown={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
@@ -1801,7 +2985,7 @@ function App() {
                     setSceneMenu(null);
                   }}
                 >
-                  改名
+                  {__ui('改名 ')}
                 </button>
                 <button
                   role="menuitem"
@@ -1812,15 +2996,15 @@ function App() {
                   }}
                 >
                   {scenes.find((scene) => scene.id === sceneMenu.id)?.binding
-                    ? '重框（解除跟随）'
-                    : '重框'}
+                    ? __ui('重框（解除跟随）')
+                    : __ui('重框')}
                 </button>
                 <button
                   role="menuitem"
-                  title="以画布当前选中的元素或组合重新建立跟随"
+                  title={__ui('以画布当前选中的元素或组合重新建立跟随')}
                   onClick={() => rebuildSceneBinding(sceneMenu.id)}
                 >
-                  重建跟随
+                  {__ui('重建跟随 ')}
                 </button>
                 <button
                   role="menuitem"
@@ -1833,7 +3017,7 @@ function App() {
                     setSceneMenu(null);
                   }}
                 >
-                  上移
+                  {__ui('上移 ')}
                 </button>
               </>
             )}
@@ -1844,13 +3028,19 @@ function App() {
               onClick={() => {
                 stop();
                 setAutoPlay(false);
-                setSceneDeletion({ ids: sceneMenu.ids, documentId: doc.id });
+                setSceneDeletion({
+                  ids: sceneMenu.ids,
+                  documentId: doc.id,
+                });
                 setSceneMenu(null);
               }}
             >
               {sceneMenu.ids.length > 1
-                ? `删除已选场景（${sceneMenu.ids.length}）`
-                : '删除场景'}
+                ? '' +
+                  __ui('删除已选场景（') +
+                  sceneMenu.ids.length +
+                  __ui('）')
+                : __ui('删除场景')}
             </button>
           </div>
         </div>
@@ -1859,8 +3049,8 @@ function App() {
         <>
           <button
             className="export-toggle"
-            aria-label="导出"
-            title="导出"
+            aria-label={__ui('导出')}
+            title={__ui('导出')}
             disabled={!doc || busy}
             aria-expanded={exportMenu}
             onClick={() => setExportMenu(!exportMenu)}
@@ -1882,10 +3072,15 @@ function App() {
             </svg>
           </button>
           {exportMenu && (
-            <div className="export-menu" role="dialog" aria-label="导出选项">
-              <strong>导出</strong>
+            <div
+              className="export-menu"
+              role="dialog"
+              aria-label={__ui('导出选项')}
+            >
+              <strong>{__ui('导出')}</strong>
               <span className="hint">
-                范围：{exportRegion ? '已框选区域' : '整张白板'}
+                {__ui('范围：')}
+                {exportRegion ? __ui('已框选区域') : __ui('整张白板')}
               </span>
               <div className="actions">
                 <button
@@ -1895,40 +3090,42 @@ function App() {
                     stop();
                   }}
                 >
-                  框选导出区域
+                  {__ui('框选导出区域 ')}
                 </button>
-                <button onClick={() => setExportRegion(null)}>整张白板</button>
+                <button onClick={() => setExportRegion(null)}>
+                  {__ui('整张白板')}
+                </button>
               </div>
               <button
                 disabled={busy}
                 onClick={() => run(() => exportGraphic('png'))}
               >
-                导出 PNG
+                {__ui('导出 PNG ')}
               </button>
               <button
                 disabled={busy}
                 onClick={() => run(() => exportGraphic('svg'))}
               >
-                导出 SVG
+                {__ui('导出 SVG ')}
               </button>
               <button
                 disabled={busy}
                 onClick={() => run(() => exportPDF(false))}
               >
-                导出 PDF
+                {__ui('导出 PDF ')}
               </button>
               <button
                 disabled={busy || !scenes.length}
                 onClick={() => run(() => exportPDF(true))}
               >
-                场景 PDF
+                {__ui('场景 PDF ')}
               </button>
-              <small>可编辑格式保存完整白板，包含区域外内容。</small>
+              <small>{__ui('可编辑格式保存完整白板，包含区域外内容。')}</small>
               <button
                 disabled={busy}
                 onClick={() =>
-                  run(() => {
-                    flush();
+                  run(async () => {
+                    await flush();
                     return bridge.invoke(
                       'exportDocument',
                       doc.id,
@@ -1938,13 +3135,13 @@ function App() {
                   })
                 }
               >
-                导出完整文档
+                {__ui('导出完整文档 ')}
               </button>
               <button
                 disabled={busy}
                 onClick={() =>
-                  run(() => {
-                    flush();
+                  run(async () => {
+                    await flush();
                     return bridge.invoke(
                       'exportDocument',
                       doc.id,
@@ -1954,16 +3151,18 @@ function App() {
                   })
                 }
               >
-                导出 .excalidraw
+                {__ui('导出 .excalidraw ')}
               </button>
-              <button onClick={() => setExportMenu(false)}>关闭导出</button>
+              <button onClick={() => setExportMenu(false)}>
+                {__ui('关闭导出')}
+              </button>
             </div>
           )}
           <button
             className="scene-panel-toggle"
             onClick={toggleSidebar}
-            title={sidebar ? '隐藏场景' : '显示场景'}
-            aria-label={sidebar ? '隐藏场景' : '显示场景'}
+            title={sidebar ? __ui('隐藏场景') : __ui('显示场景')}
+            aria-label={sidebar ? __ui('隐藏场景') : __ui('显示场景')}
             aria-pressed={sidebar}
           >
             <PanelIcon />
@@ -1973,16 +3172,29 @@ function App() {
       {presenting && (
         <>
           <div
+            ref={inkStage}
+            tabIndex={-1}
             className={`presentation-ink ${pen ? 'drawing' : ''}`}
             data-ink-count={inkCount}
-            onPointerDownCapture={fitOnMiddleDoubleClick}
+            onWheelCapture={stop}
+            onKeyDownCapture={stop}
+            onPointerDownCapture={(event) => {
+              fitOnMiddleDoubleClick(event);
+              if (event.target.closest('canvas')) {
+                stop();
+                if (event.button === 0)
+                  event.currentTarget
+                    .querySelector('.excalidraw')
+                    ?.focus({ preventScroll: true });
+              }
+            }}
           >
             <Excalidraw
-              langCode="zh-CN"
+              langCode={preferences.language === 'en' ? 'en' : 'zh-CN'}
               theme={canvasDark ? 'dark' : 'light'}
               viewModeEnabled={!pen}
-              key={currentScene}
-              handleKeyboardGlobally
+              name="Local Canvas presentation ink"
+              handleKeyboardGlobally={false}
               initialData={{
                 elements: [],
                 appState: {
@@ -1990,22 +3202,51 @@ function App() {
                   currentItemStrokeColor: '#e03131',
                   currentItemStrokeWidth: 2,
                   ...inkStyle.current,
-                  activeTool: { type: 'freedraw', locked: true },
-                  ...savedView.current,
+                  activeTool: {
+                    type: 'freedraw',
+                    locked: true,
+                  },
+                  ...(api.current
+                    ? {
+                        scrollX: api.current.getAppState().scrollX,
+                        scrollY: api.current.getAppState().scrollY,
+                        zoom: api.current.getAppState().zoom,
+                      }
+                    : savedView.current),
                 },
               }}
               excalidrawAPI={(value) => {
                 inkApi.current = value;
               }}
               onChange={(elements, state) => {
+                setFillSignal(
+                  state.activeTool.type +
+                    '|' +
+                    Object.keys(state.selectedElementIds).join(',') +
+                    elements
+                      .filter((e) => state.selectedElementIds[e.id])
+                      .map((e) => densityOf(e))
+                      .join(','),
+                );
+                tagFillDensity(elements, state, inkApi.current);
                 inkStyle.current = {
                   currentItemStrokeColor: state.currentItemStrokeColor,
                   currentItemStrokeWidth: state.currentItemStrokeWidth,
                   currentItemOpacity: state.currentItemOpacity,
                   currentItemBackgroundColor: state.currentItemBackgroundColor,
+                  currentItemStrokeStyle: state.currentItemStrokeStyle,
+                  currentItemRoughness: state.currentItemRoughness,
+                  currentItemFillStyle: state.currentItemFillStyle,
                 };
                 setInkCount(elements.filter((e) => !e.isDeleted).length);
-                if (!presentation.current || !api.current) return;
+                if (
+                  !presentation.current ||
+                  !api.current ||
+                  !pen ||
+                  !presentationReady ||
+                  frame.current !== null
+                )
+                  return;
                 const current = api.current.getAppState();
                 if (
                   current.scrollX !== state.scrollX ||
@@ -2031,7 +3272,7 @@ function App() {
                 setAutoPlay(false);
               }}
             >
-              图层
+              {__ui('图层 ')}
             </button>
             <button
               disabled={!presentationReady || scenes.length < 2}
@@ -2043,12 +3284,12 @@ function App() {
                 setAutoPlay(!autoPlay);
               }}
             >
-              {autoPlay ? '暂停自动演示' : '自动演示'}
+              {autoPlay ? __ui('暂停自动演示') : __ui('自动演示')}
             </button>
             <button
-              aria-label="循环演示"
+              aria-label={__ui('循环演示')}
               aria-pressed={loopPresentation}
-              title="开启后自动演示到末页会返回首页继续播放"
+              title={__ui('开启后自动演示到末页会返回首页继续播放')}
               onClick={() => {
                 const next = !loopPresentation;
                 setLoopPresentation(next);
@@ -2057,38 +3298,41 @@ function App() {
                 );
               }}
             >
-              循环{loopPresentation ? '：开' : '：关'}
+              {__ui('循环')}
+              {loopPresentation ? __ui('：开') : __ui('：关')}
             </button>
             <label>
-              移动{' '}
+              {__ui('移动')}{' '}
               <select
-                aria-label="演示移动时长"
+                aria-label={__ui('演示移动时长')}
                 value={duration}
                 onChange={(e) => setDuration(Number(e.target.value))}
               >
                 {[500, 1000, 1500, 2000].map((ms) => (
                   <option key={ms} value={ms}>
-                    {ms / 1000} 秒
+                    {ms / 1000}
+                    {__ui(' 秒 ')}
                   </option>
                 ))}
               </select>
             </label>
             <label className="auto-hint">
-              停留{' '}
+              {__ui('停留')}{' '}
               <select
-                aria-label="自动演示停留时间"
+                aria-label={__ui('自动演示停留时间')}
                 value={dwellTime}
                 onChange={(e) => setDwellTime(Number(e.target.value))}
               >
                 {[1000, 2000, 3000, 5000, 10000, 15000, 30000].map((ms) => (
                   <option key={ms} value={ms}>
-                    {ms / 1000} 秒
+                    {ms / 1000}
+                    {__ui(' 秒 ')}
                   </option>
                 ))}
               </select>
             </label>
             <button
-              aria-label="上一场景"
+              aria-label={__ui('上一场景')}
               disabled={scenes.findIndex((s) => s.id === currentScene) <= 0}
               onClick={() => step(-1)}
             >
@@ -2099,7 +3343,7 @@ function App() {
               {scenes.length}
             </span>
             <button
-              aria-label="下一场景"
+              aria-label={__ui('下一场景')}
               disabled={
                 scenes.findIndex((s) => s.id === currentScene) >=
                 scenes.length - 1
@@ -2122,10 +3366,12 @@ function App() {
                   });
               }}
             >
-              临时画笔
+              {__ui('临时画笔 ')}
             </button>
-            <button onClick={clearInk}>清除</button>
-            <button onClick={() => run(exitPresentation)}>退出演示</button>
+            <button onClick={clearInk}>{__ui('清除')}</button>
+            <button onClick={() => run(exitPresentation)}>
+              {__ui('退出演示')}
+            </button>
           </div>
         </>
       )}
@@ -2142,7 +3388,7 @@ function App() {
             ref={menuPanel}
             className="file-menu"
             role={fileMenu.mode === 'actions' ? 'menu' : 'dialog'}
-            aria-label={`${fileMenu.node?.title || '根目录'} 操作`}
+            aria-label={'' + (fileMenu.node?.title || '根目录') + __ui(' 操作')}
             style={{
               left: Math.max(8, fileMenu.x),
               top: Math.max(8, fileMenu.y),
@@ -2199,9 +3445,11 @@ function App() {
             }}
           >
             <div className="file-menu-heading">
-              <span>{fileMenu.node?.title || '根目录'}</span>
+              <span>{fileMenu.node?.title || __ui('根目录')}</span>
               <small>
-                {fileMenu.node?.kind === 'document' ? '白板' : '文件夹'}
+                {fileMenu.node?.kind === 'document'
+                  ? __ui('白板')
+                  : __ui('文件夹')}
               </small>
             </div>
             {fileMenu.mode === 'actions' &&
@@ -2214,7 +3462,7 @@ function App() {
                       setFileMenu(null);
                     }}
                   >
-                    新建白板
+                    {__ui('新建白板 ')}
                   </button>
                   <button
                     role="menuitem"
@@ -2223,7 +3471,7 @@ function App() {
                       setFileMenu(null);
                     }}
                   >
-                    新建文件夹
+                    {__ui('新建文件夹 ')}
                   </button>
                 </>
               )}
@@ -2231,13 +3479,13 @@ function App() {
               <>
                 {fileMenu.node.kind === 'folder' && <hr />}
                 <button role="menuitem" onClick={() => menuMode('rename')}>
-                  重命名
+                  {__ui('重命名 ')}
                   <span className="menu-chevron" aria-hidden="true">
                     ›
                   </span>
                 </button>
                 <button role="menuitem" onClick={() => menuMode('move')}>
-                  移动到文件夹
+                  {__ui('移动到文件夹 ')}
                   <span className="menu-chevron" aria-hidden="true">
                     ›
                   </span>
@@ -2248,7 +3496,7 @@ function App() {
                   className="danger-action"
                   onClick={() => menuMode('trash')}
                 >
-                  移入回收站
+                  {__ui('移入回收站 ')}
                 </button>
               </>
             )}
@@ -2258,7 +3506,7 @@ function App() {
                 disabled={menuPending}
                 onClick={() => menuMode('actions')}
               >
-                ‹ 返回操作
+                {__ui('‹ 返回操作 ')}
               </button>
             )}
             {fileMenu.mode === 'rename' && fileMenu.node && (
@@ -2274,15 +3522,18 @@ function App() {
                         await bridge.invoke('rename', fileMenu.node.id, title);
                         await refresh();
                         if (doc?.id === fileMenu.node.id)
-                          setDoc({ ...doc, title });
+                          setDoc({
+                            ...doc,
+                            title,
+                          });
                       });
                   }}
                 >
                   <label>
-                    重命名
+                    {__ui('重命名 ')}
                     <input
                       name="title"
-                      aria-label="文件名称"
+                      aria-label={__ui('文件名称')}
                       defaultValue={fileMenu.node.title}
                       maxLength={200}
                       required
@@ -2295,14 +3546,14 @@ function App() {
                       disabled={menuPending}
                       onClick={closeFileMenu}
                     >
-                      取消
+                      {__ui('取消 ')}
                     </button>
                     <button
                       className="primary-action"
                       type="submit"
                       disabled={menuPending}
                     >
-                      保存名称
+                      {__ui('保存名称 ')}
                     </button>
                   </div>
                 </form>
@@ -2320,14 +3571,14 @@ function App() {
                 }}
               >
                 <label>
-                  移动到
+                  {__ui('移动到 ')}
                   <select
                     name="parent"
-                    aria-label="移动到文件夹"
+                    aria-label={__ui('移动到文件夹')}
                     defaultValue={fileMenu.node.parent || ''}
                     disabled={menuPending}
                   >
-                    <option value="">根目录</option>
+                    <option value="">{__ui('根目录')}</option>
                     {nodes
                       .filter(
                         (n) =>
@@ -2343,7 +3594,7 @@ function App() {
                   </select>
                 </label>
                 <p className="menu-help">
-                  只调整工作区目录，不移动磁盘上的关联文件。
+                  {__ui('只调整工作区目录，不移动磁盘上的关联文件。 ')}
                 </p>
                 <div className="menu-form-actions">
                   <button
@@ -2351,27 +3602,29 @@ function App() {
                     disabled={menuPending}
                     onClick={closeFileMenu}
                   >
-                    取消
+                    {__ui('取消 ')}
                   </button>
                   <button
                     type="submit"
                     className="primary-action"
                     disabled={menuPending}
                   >
-                    移动到此处
+                    {__ui('移动到此处 ')}
                   </button>
                 </div>
               </form>
             )}
             {fileMenu.mode === 'trash' && (
               <div className="menu-confirm">
-                <h3>移入回收站？</h3>
+                <h3>{__ui('移入回收站？')}</h3>
                 <p>
-                  可在工作区回收站恢复。磁盘上的关联文件不会被删除；非空文件夹需先移出内容。
+                  {__ui(
+                    '可在工作区回收站恢复。磁盘上的关联文件不会被删除；非空文件夹需先移出内容。 ',
+                  )}
                 </p>
                 <div className="menu-form-actions">
                   <button disabled={menuPending} onClick={closeFileMenu}>
-                    取消
+                    {__ui('取消 ')}
                   </button>
                   <button
                     className="danger-button"
@@ -2380,7 +3633,7 @@ function App() {
                       performMenuAction(() => remove(fileMenu.node))
                     }
                   >
-                    移入回收站
+                    {__ui('移入回收站 ')}
                   </button>
                 </div>
               </div>
@@ -2420,10 +3673,12 @@ function App() {
             aria-describedby="scene-delete-description"
           >
             <h2 id="scene-delete-title">
-              删除 {sceneDeletion.ids.length} 个场景？
+              {__ui('删除 ')}
+              {sceneDeletion.ids.length}
+              {__ui(' 个场景？ ')}
             </h2>
             <p id="scene-delete-description">
-              只删除所选场景的导航区域，不删除白板上的文字或图形。
+              {__ui('只删除所选场景的导航区域，不删除白板上的文字或图形。 ')}
             </p>
             <ul>
               {scenes
@@ -2434,17 +3689,21 @@ function App() {
                 ))}
             </ul>
             {sceneDeletion.ids.length > 5 && (
-              <p>另有 {sceneDeletion.ids.length - 5} 个场景。</p>
+              <p>
+                {__ui('另有 ')}
+                {sceneDeletion.ids.length - 5}
+                {__ui(' 个场景。')}
+              </p>
             )}
             <div className="menu-form-actions">
               <button autoFocus onClick={() => setSceneDeletion(null)}>
-                取消
+                {__ui('取消 ')}
               </button>
               <button
                 className="danger-button"
                 onClick={() => run(confirmSceneDeletion)}
               >
-                确认删除
+                {__ui('确认删除 ')}
               </button>
             </div>
           </section>
@@ -2453,30 +3712,34 @@ function App() {
       {fileInfo && (
         <div className="modal-backdrop">
           <section className="modal">
-            <h2>文件信息</h2>
+            <h2>{__ui('文件信息')}</h2>
             <p>
-              文件位置：
+              {__ui('文件位置： ')}
               <span className="storage-path">
                 {fileInfo.file ||
-                  '尚未另存为独立文件，请使用“另存为”选择位置。'}
+                  __ui('尚未另存为独立文件，请使用“另存为”选择位置。')}
               </span>
             </p>
             <p>
-              内容自动保存到本机工作区；手动保存同时记录当前视图，并写回已关联的文件。
+              {__ui(
+                '内容自动保存到本机工作区；手动保存同时记录当前视图，并写回已关联的文件。 ',
+              )}
             </p>
             <p>
-              本机恢复副本：
+              {__ui('本机恢复副本： ')}
               <span className="storage-path">{fileInfo.database}</span>
             </p>
-            <button onClick={() => setFileInfo(null)}>关闭</button>
+            <button onClick={() => setFileInfo(null)}>{__ui('关闭')}</button>
           </section>
         </div>
       )}
       {trash && (
         <div className="modal-backdrop">
           <section className="modal">
-            <h2>回收站</h2>
-            {!nodes.some((node) => node.deleted) && <p>回收站为空。</p>}
+            <h2>{__ui('回收站')}</h2>
+            {!nodes.some((node) => node.deleted) && (
+              <p>{__ui('回收站为空。')}</p>
+            )}
             {nodes
               .filter((n) => n.deleted)
               .map((n) => (
@@ -2490,7 +3753,7 @@ function App() {
                       })
                     }
                   >
-                    恢复
+                    {__ui('恢复 ')}
                   </button>
                 </p>
               ))}
@@ -2498,16 +3761,19 @@ function App() {
               <div
                 className="menu-confirm"
                 role="alertdialog"
-                aria-label="确认清空回收站"
+                aria-label={__ui('确认清空回收站')}
               >
-                <h3>永久清空回收站？</h3>
+                <h3>{__ui('永久清空回收站？')}</h3>
                 <p>
-                  将删除 {nodes.filter((node) => node.deleted).length}{' '}
-                  项及其历史版本，无法在回收站恢复。磁盘上的关联文件和已有备份保留。
+                  {__ui('将删除 ')}
+                  {nodes.filter((node) => node.deleted).length}{' '}
+                  {__ui(
+                    '项及其历史版本，无法在回收站恢复。磁盘上的关联文件和已有备份保留。 ',
+                  )}
                 </p>
                 <div className="menu-form-actions">
                   <button autoFocus onClick={() => setEmptyTrashConfirm(false)}>
-                    取消清空
+                    {__ui('取消清空 ')}
                   </button>
                   <button
                     className="danger-button"
@@ -2519,7 +3785,7 @@ function App() {
                       })
                     }
                   >
-                    确认永久清空
+                    {__ui('确认永久清空 ')}
                   </button>
                 </div>
               </div>
@@ -2529,7 +3795,7 @@ function App() {
                 disabled={!nodes.some((node) => node.deleted)}
                 onClick={() => setEmptyTrashConfirm(true)}
               >
-                清空回收站
+                {__ui('清空回收站 ')}
               </button>
             )}
             <button
@@ -2538,7 +3804,149 @@ function App() {
                 setTrash(false);
               }}
             >
-              关闭
+              {__ui('关闭 ')}
+            </button>
+          </section>
+        </div>
+      )}
+      {arrangeDialog && (
+        <div className="modal-backdrop">
+          <section
+            className="modal arrange-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={__ui('自动整理元素')}
+          >
+            <h2>{__ui('自动整理元素')}</h2>
+            <p>
+              {__ui(
+                '按视觉边界等距排列，组合、绑定文字和画框内容一起移动。可用撤销恢复。 ',
+              )}
+            </p>
+            <div className="dialog-actions">
+              <button
+                onClick={() => {
+                  setArrangeDialog(false);
+                  setSelecting('arrange');
+                }}
+              >
+                {__ui('框选元素 ')}
+              </button>
+              <span>
+                {__ui('已选择 ')}
+                {arrangeIds.length}
+                {__ui(' 个元素')}
+              </span>
+            </div>
+            <label>
+              {__ui('整理模式 ')}
+              <select
+                aria-label={__ui('整理模式')}
+                value={arrangeMode}
+                onChange={(e) => setArrangeMode(e.target.value)}
+              >
+                <option value="vertical">{__ui('纵向整理')}</option>
+                <option value="horizontal">{__ui('横向整理')}</option>
+                <option value="grid">{__ui('阵列整理')}</option>
+              </select>
+            </label>
+            <label>
+              {__ui('元素间距 ')}
+              <input
+                aria-label={__ui('元素间距')}
+                type="number"
+                min="0"
+                max="1000"
+                value={arrangeGap}
+                onChange={(e) => setArrangeGap(e.target.value)}
+              />
+            </label>
+            <label className="dav-http">
+              <input
+                type="checkbox"
+                checked={arrangeScene}
+                onChange={(e) => setArrangeScene(e.target.checked)}
+              />
+              {__ui('整理后添加到演示列表（跟随所选元素） ')}
+            </label>
+            <div className="dialog-actions">
+              <button disabled={!arrangeIds.length} onClick={applyArrange}>
+                {__ui('应用整理 ')}
+              </button>
+              <button onClick={() => setArrangeDialog(false)}>
+                {__ui('取消')}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+      {settings && (
+        <Settings
+          bridge={bridge}
+          close={() => setSettings(false)}
+          theme={uiTheme}
+          setTheme={changeTheme}
+          preferences={preferences}
+          setPreferences={changePreferences}
+          openStorage={() => {
+            setSettings(false);
+            setStorageDialog(true);
+          }}
+          openDav={() => {
+            setSettings(false);
+            setDavDialog(true);
+          }}
+          resetBalloon={() => {
+            if (active.current)
+              changed({
+                ...active.current.data,
+                balloonSize: undefined,
+              });
+            setStatus(__ui('已恢复默认球标尺寸'));
+          }}
+          onUpdate={setUpdateAvailable}
+          saveBeforeInstall={async () => {
+            await manualSave();
+            await flush();
+          }}
+        />
+      )}
+      {cascadeNotice && (
+        <div className="modal-backdrop">
+          <section
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={__ui('跟随场景已删除')}
+          >
+            <h2>{__ui('跟随场景已删除')}</h2>
+            <p>{__ui('所关联的元素已删除，同时移除了以下场景：')}</p>
+            <ul>
+              {cascadeNotice.map((title, i) => (
+                <li key={i}>{title}</li>
+              ))}
+            </ul>
+            <p>{__ui('关闭提示后，撤销元素删除也会恢复对应场景。')}</p>
+            <label className="dav-http">
+              <input
+                type="checkbox"
+                checked={skipCascade}
+                onChange={(e) => setSkipCascade(e.target.checked)}
+              />
+              {__ui('以后不再提示 ')}
+            </label>
+            <button
+              autoFocus
+              onClick={() => {
+                if (skipCascade)
+                  changePreferences({
+                    ...preferences,
+                    skipCascadeNotice: true,
+                  });
+                setCascadeNotice(null);
+              }}
+            >
+              {__ui('知道了 ')}
             </button>
           </section>
         </div>
@@ -2549,25 +3957,94 @@ function App() {
           close={() => setDavDialog(false)}
           beforeTransfer={flush}
           restored={refresh}
+          onStatus={reportDav}
         />
+      )}
+      {consent && (
+        <div className="modal-backdrop">
+          <section
+            className="modal"
+            role="dialog"
+            aria-label={__ui('加载外部网页')}
+            aria-modal="true"
+          >
+            <h2>{__ui('加载外部网页？')}</h2>
+            <p>
+              {__ui(
+                '这些站点将收到你的网络请求，可能使用 Cookie 或加载其他资源。只批准你信任的内容；本次批准仅在当前文档打开期间有效。',
+              )}
+            </p>
+            <ul>
+              {consent.map((origin) => (
+                <li key={origin}>
+                  <code>{origin}</code>
+                </li>
+              ))}
+            </ul>
+            <div className="dialog-actions">
+              <button onClick={() => run(() => approveOrigins(consent))}>
+                {__ui('允许加载')}
+              </button>
+              <button onClick={() => setConsent(null)}>
+                {__ui('保持阻止')}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+      {libraryInstall && (
+        <div className="modal-backdrop">
+          <section
+            className="modal"
+            role="dialog"
+            aria-label={__ui('安装素材库')}
+            aria-modal="true"
+          >
+            <h2>{__ui('安装素材库？')}</h2>
+            <p>
+              {__ui('从官方目录下载并合并到当前白板素材库。请遵守素材许可。')}
+            </p>
+            <p className="library-source">{libraryInstall}</p>
+            <div className="dialog-actions">
+              <button
+                onClick={() =>
+                  run(async () => {
+                    const value = await bridge.invoke(
+                      'downloadLibrary',
+                      libraryInstall,
+                    );
+                    await importLibrary(value);
+                    setLibraryInstall(null);
+                  })
+                }
+              >
+                {__ui('下载并安装')}
+              </button>
+              <button onClick={() => setLibraryInstall(null)}>
+                {__ui('取消')}
+              </button>
+            </div>
+          </section>
+        </div>
       )}
       {videoDialog && (
         <div className="modal-backdrop">
           <section
             className="modal"
             role="dialog"
-            aria-label="嵌入网页视频"
+            aria-label={__ui('嵌入网页 / 视频')}
             aria-modal="true"
           >
-            <h2>嵌入网页视频</h2>
+            <h2>{__ui('嵌入网页 / 视频')}</h2>
             <p>
-              支持 YouTube、Bilibili
-              完整视频地址。点击画布上的“操作视频”才会联网加载官方播放器；播放、暂停和拖动进度使用播放器原生控件。停止或离开可见区域后播放器卸载。
+              {__ui(
+                '支持 HTTPS 网页、NAS 页面及 YouTube、Bilibili 视频。添加即表示允许加载该站点；打开已有文档时会重新询问。单击边缘选择、拖动或缩放，Delete 删除；双击中心操作网页或播放器。网站可能禁止嵌入，可在浏览器打开。仅专门适配的视频支持切换场景自动暂停。 ',
+              )}
             </p>
             <label>
-              视频地址
+              {__ui('网页或视频地址 ')}
               <input
-                aria-label="视频地址"
+                aria-label={__ui('网页或视频地址')}
                 value={videoURL}
                 onChange={(e) => setVideoURL(e.target.value)}
                 placeholder="https://www.bilibili.com/video/BV…"
@@ -2576,39 +4053,56 @@ function App() {
             <p role="alert">{videoError}</p>
             <div className="dialog-actions">
               <button
-                onClick={() => {
-                  if (!parseVideo(videoURL)) {
-                    setVideoError(
-                      '请输入有效的 YouTube 或 Bilibili HTTPS 完整视频地址（暂不支持短链 b23.tv）',
+                onClick={() =>
+                  run(async () => {
+                    if (!parseEmbed(videoURL)) {
+                      setVideoError(
+                        __ui('请输入有效的 HTTPS 地址，不能包含用户名或密码'),
+                      );
+                      return;
+                    }
+                    if (!api.current) return;
+                    await approveOrigins([parseEmbed(videoURL).origin]);
+                    const view = viewRect(api.current.getAppState());
+                    const elements = restoreElements(
+                      [
+                        {
+                          type: 'embeddable',
+                          x: view.x + view.width / 2 - 320,
+                          y: view.y + view.height / 2 - 180,
+                          width: 640,
+                          height: 360,
+                          link: videoURL,
+                          strokeColor: '#868e96',
+                        },
+                      ],
+                      null,
                     );
-                    return;
-                  }
-                  if (!api.current) return;
-                  const view = viewRect(api.current.getAppState());
-                  const elements = convertToExcalidrawElements([
-                    {
-                      type: 'embeddable',
-                      x: view.x + view.width / 2 - 320,
-                      y: view.y + view.height / 2 - 180,
-                      width: 640,
-                      height: 360,
-                      link: videoURL,
-                      strokeColor: '#868e96',
-                    },
-                  ]);
-                  api.current.updateScene({
-                    elements: [
-                      ...api.current.getSceneElementsIncludingDeleted(),
-                      ...elements,
-                    ],
-                    captureUpdate: CaptureUpdateAction.IMMEDIATELY,
-                  });
-                  setVideoDialog(false);
-                }}
+                    api.current.updateScene({
+                      elements: [
+                        ...api.current.getSceneElementsIncludingDeleted(),
+                        ...elements,
+                      ],
+                      appState: {
+                        selectedElementIds: Object.fromEntries(
+                          elements.map((e) => [e.id, true]),
+                        ),
+                        activeEmbeddable: null,
+                      },
+                      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+                    });
+                    api.current.setActiveTool({
+                      type: 'selection',
+                    });
+                    setVideoDialog(false);
+                  })
+                }
               >
-                添加到画布
+                {__ui('添加到画布 ')}
               </button>
-              <button onClick={() => setVideoDialog(false)}>取消</button>
+              <button onClick={() => setVideoDialog(false)}>
+                {__ui('取消')}
+              </button>
             </div>
           </section>
         </div>
@@ -2616,29 +4110,35 @@ function App() {
       {storageDialog && (
         <div className="modal-backdrop">
           <section className="modal">
-            <h2>工作区保存位置</h2>
+            <h2>{__ui('工作区保存位置')}</h2>
             <p>
-              自动保存到本机 SQLite 工作区；另存为可选择完整白板文件的位置。
+              {bridge.kind === 'web'
+                ? __ui(
+                    '自动保存到 NAS 服务器 SQLite 工作区。打开文件从浏览器选择；另存为下载文件或由浏览器文件窗口选择位置。浏览器不会透露本地完整路径。',
+                  )
+                : __ui(
+                    '自动保存到本机 SQLite 工作区；另存为可选择完整白板文件的位置。',
+                  )}
             </p>
             <p className="storage-path">{storageInfo?.database}</p>
             <p>
-              自动备份：
+              {__ui('自动备份： ')}
               <span className="storage-path">{storageInfo?.backups}</span>
             </p>
             {storagePending ? (
               <>
-                <p>已完整迁移，原位置保留。请重启使用新工作区。</p>
+                <p>{__ui('已完整迁移，原位置保留。请重启使用新工作区。')}</p>
                 <button onClick={() => run(() => bridge.invoke('restart'))}>
-                  重启应用
+                  {__ui('重启应用 ')}
                 </button>
               </>
             ) : (
               <>
                 <button
-                  disabled={busy}
+                  disabled={busy || bridge.kind === 'web'}
                   onClick={() =>
                     run(async () => {
-                      manualSave();
+                      await manualSave();
                       setBusy(true);
                       try {
                         const result = await bridge.invoke('changeStorage');
@@ -2656,10 +4156,10 @@ function App() {
                     })
                   }
                 >
-                  更改工作区位置
+                  {__ui('更改工作区位置 ')}
                 </button>
                 <button disabled={busy} onClick={() => setStorageDialog(false)}>
-                  关闭
+                  {__ui('关闭 ')}
                 </button>
               </>
             )}
@@ -2674,7 +4174,7 @@ function App() {
               <>
                 <button
                   onClick={() =>
-                    ask('重命名', form.node.title, async (title) => {
+                    ask(__ui('重命名'), form.node.title, async (title) => {
                       await bridge.invoke('rename', form.node.id, title);
                       const list = await refresh();
                       if (doc?.id === form.node.id)
@@ -2685,9 +4185,9 @@ function App() {
                     })
                   }
                 >
-                  重命名
+                  {__ui('重命名 ')}
                 </button>
-                <button onClick={() => move(form.node)}>移动</button>
+                <button onClick={() => move(form.node)}>{__ui('移动')}</button>
                 <button
                   onClick={() =>
                     run(async () => {
@@ -2696,7 +4196,7 @@ function App() {
                     })
                   }
                 >
-                  移入回收站
+                  {__ui('移入回收站 ')}
                 </button>
               </>
             ) : (
@@ -2705,7 +4205,8 @@ function App() {
                   e.preventDefault();
                   run(async () => {
                     const value = form.value.trim();
-                    if (!form.options && !value) throw new Error('请输入名称');
+                    if (!form.options && !value)
+                      throw new Error(__ui('请输入名称'));
                     await form.submit(value);
                     setForm(null);
                   });
@@ -2715,7 +4216,10 @@ function App() {
                   <select
                     value={form.value}
                     onChange={(e) =>
-                      setForm({ ...form, value: e.target.value })
+                      setForm({
+                        ...form,
+                        value: e.target.value,
+                      })
                     }
                   >
                     {form.options.map((o) => (
@@ -2730,14 +4234,17 @@ function App() {
                     maxLength={200}
                     value={form.value}
                     onChange={(e) =>
-                      setForm({ ...form, value: e.target.value })
+                      setForm({
+                        ...form,
+                        value: e.target.value,
+                      })
                     }
                   />
                 )}
-                <button type="submit">确定</button>
+                <button type="submit">{__ui('确定')}</button>
               </form>
             )}
-            <button onClick={() => setForm(null)}>取消</button>
+            <button onClick={() => setForm(null)}>{__ui('取消')}</button>
           </section>
         </div>
       )}

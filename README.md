@@ -1,107 +1,190 @@
 # Local Canvas · 本地无限画布
 
-基于官方 MIT 授权的 Excalidraw React 组件，使用 React + Electron + SQLite 构建 Windows/macOS 本地优先白板。在保留原生绘图体验的基础上，增加本地文档管理、场景导航与全屏演示。
+基于官方 MIT 授权的 Excalidraw React 组件，提供 Windows / macOS 本地工作区，以及可部署到 NAS 的网页版。原生绘图、手写字体、箭头、组合、Frame 与撤销重做继续由官方组件提供。
 
-[下载桌面版（macOS / Windows）](https://github.com/layzerff/excalidraw/releases) · [桌面端源码](https://github.com/layzerff/excalidraw/tree/codex/local-canvas-p0/desktop)
+[下载 v0.5.0](https://github.com/layzerff/excalidraw/releases/tag/v0.5.0) · [完整更新清单](https://github.com/layzerff/excalidraw/blob/codex/local-canvas-p0/desktop/CHANGELOG.md) · [运行与开发](https://github.com/layzerff/excalidraw/tree/codex/local-canvas-p0/desktop) · [NAS 部署](https://github.com/layzerff/excalidraw/blob/codex/local-canvas-p0/desktop/web/README.md)
 
-> 以下新增能力位于开发分支，尚未发布到安装包；现有 0.4.1 下载不包含这些功能。
+<img src="docs/local-canvas/logo.png" width="96" alt="Local Canvas 手写标志" />
 
-| 开发分支扩展 | 使用方式 |
-| --- | --- |
-| 文件目录排序 | 自定义同级拖拽、名称、创建时间；长标题省略而不挤压图标 |
-| WebDAV 手动备份 | 工作区管理中配置、测试、上传备份或恢复指定备份；不覆盖本机文档，不自动同步 |
-| 网页视频 | 从画布菜单添加 YouTube/Bilibili 完整链接；编辑/演示均可操作官方播放器，切换场景自动暂停 |
+## 与 Excalidraw 开源编辑器的区别
 
-<details><summary>开发版实际界面（隔离测试工作区）</summary>
+在原生画布之外，增加本地文档管理、可跟随元素的场景、全屏演示、相对字号与填充密度、自动整理、自增球标、统一素材管理、WebDAV 备份及 NAS 网页工作区。无需 Excalidraw+，不调用其付费服务。
 
-<img src="docs/local-canvas/directory-sorting-development.png" width="220" alt="目录排序与长标题省略，图标保留固定尺寸" />
-<img src="docs/local-canvas/webdav-development.png" width="600" alt="WebDAV 连接设置及手动备份恢复面板，未填写真实账号" />
+以下均为真实界面的全彩 WebP 动图，以用户“new”白板的演示副本录制。字号和填充聚焦居中的图元；视频置于独立区域后再居中放大。字幕与指针高亮是录制标注，原白板未改动。点击动图可查看原尺寸。
 
-</details>
+## 本地文档与可靠保存
 
-WebDAV 已通过本机测试服务器流程，真实 NAS 与 Windows 实机兼容仍需验证。视频受网络、区域及平台嵌入权限限制；PDF/图片导出为静态内容，不携带可播放视频。
+### 文件树与目录排序
 
-[开发源码与运行说明](https://github.com/layzerff/excalidraw/tree/codex/local-canvas-p0/desktop) · [修改清单](https://github.com/layzerff/excalidraw/blob/codex/local-canvas-p0/desktop/NEXT-ITERATION.md) · [更新记录](https://github.com/layzerff/excalidraw/blob/codex/local-canvas-p0/desktop/CHANGELOG.md) · [验证记录](https://github.com/layzerff/excalidraw/blob/codex/local-canvas-p0/desktop/VALIDATION.md) · [原版介绍](README.upstream.md)
+根目录或文件夹右键新建；就地菜单改名、移动，支持拖拽移入文件夹及根目录。目录可自定义拖拽、按名称或创建时间排序，长标题不会挤压图标。
 
-## 与原版的区别
+![文件树与目录排序 · new 白板演示](docs/local-canvas/features/workspace.webp)
 
-比较对象为上游开源编辑器及组件。原生绘图、文字、箭头、自由画笔、Frame 和撤销重做继续由官方组件提供。
+### 自动保存、手动视图保存与另存为
 
-| 功能 | Local Canvas 的扩展 |
-| --- | --- |
-| 本地文档工作区 | 根目录/文件夹右键新建，文件树就地菜单改名与移动，支持拖入文件夹及拖回根目录；文件夹加粗与折叠，左右侧栏可调整宽度 |
-| 回收站 | 恢复误删的白板和文件夹，或经确认后清空回收站；磁盘上的关联文件及已有备份独立保留 |
-| 保存与备份 | 内容变更自动保存，平移、缩放和场景导航不触发写入；手动保存（Cmd/Ctrl+S）同时记录当前视图；完整备份包含图片、场景及素材库 |
-| 三种场景创建方式 | 框选区域、选择画布元素或组合、添加当前视图；元素场景跟随关联内容的位置和边界变化，可右键重建跟随，随文档及备份保存 |
-| 紧凑场景侧栏 | 标题原位编辑、拖动排序，Shift 连续多选并右键确认删除；双栏图标切换显示 |
-| 导航时长 | 编辑侧栏固定 0.5 秒；演示中的手动翻页与自动播放可选 0.5、1、1.5、2 秒 |
-| 全屏场景演示 | 从排序第一项开始，底部手动翻页或自动演示；图层面板可拖拽排序、右键原位改名，退出恢复编辑视图 |
-| 循环演示与只读浏览 | 自动演示可开启循环，末页回首页继续；独立“画布只读”禁止元素编辑、拖动和删除，同时允许平移缩放，保留原生工具锁的连续绘制语义 |
-| 四种工作区主题 | GitHub、Reddit、VS Code、Notion 风格，分别调整图标、配色与控件；目录高亮保持柔和，固定彩色调色板切换主题并记住偏好 |
-| 浏览与全览 | 左右侧栏可独立隐藏，标题/保存状态与操作按钮分区；双击鼠标中键让整张白板的内容进入视野 |
-| 文件打开与保存 | 系统窗口选择文件，手动保存写回原文件；另存为选择新位置，“文件信息”查看路径。内容自动保存到本机恢复副本，外部文件变更时拒绝覆盖 |
-| 演示临时画笔 | 直接使用 Excalidraw 原生自由画笔和样式面板，支持描边、背景、粗细及透明度；翻页或退出清除 |
-| 集中导出 | 右上角统一入口，可框选区域导出 PNG、SVG、PDF；支持整板、场景分页 PDF 及完整可编辑文档 |
-| 字体与素材库 | 沿用画布原生字体面板，支持手写字体及离线中文回退；本地 `.excalidrawlib` 导入、合并及随文档保存 |
-| 离线使用 | 编辑器资源与字体随包提供，无需连接 Excalidraw+；当前未开放云同步及在线素材库安装 |
+文字、图形、颜色等内容变更自动保存；平移、缩放和场景导航不触发内容写入。Cmd/Ctrl+S 同时记录当前视图并写回关联文件；另存为可选择位置，“文件信息”查看路径，工作区也可迁移。
 
-## 编辑与场景管理
+![自动保存、手动视图保存与另存为 · new 白板演示](docs/local-canvas/features/save-files.webp)
 
-四种界面主题，独立的文件与场景侧栏，原生绘图与本地保存。目录层级使用引导线和柔和背景，顶部集中提供文件信息、只读浏览、主题与导出操作。
+### 备份恢复与回收站
 
-<img src="docs/local-canvas/logo.png" width="128" alt="Canvas 手写 Logo：蓝色边框、黄色交叉线与透明外角" />
+完整工作区备份包含文档、场景、图片及本地素材目录；恢复导入新文件夹。回收站可恢复误删，清空前再次确认。独立文件和已有备份保留。
 
-| GitHub | Reddit |
-| --- | --- |
-| ![GitHub 主题实机](docs/local-canvas/theme-github.png) | ![Reddit 主题实机](docs/local-canvas/theme-reddit.png) |
-| **VS Code** | **Notion** |
-| ![VS Code 主题实机](docs/local-canvas/theme-vscode.png) | ![Notion 主题实机](docs/local-canvas/theme-notion.png) |
+![备份恢复与回收站 · new 白板演示](docs/local-canvas/features/backup-trash.webp)
 
-四种风格各有目录图标、控件圆角与配色；目录选中和祖先路径采用低对比度背景，主题入口始终使用同一枚彩色调色板。只借鉴视觉风格，不代表与上述产品存在合作关系。
+## 场景与全屏演示
 
-左上角双栏按钮隐藏/显示文件栏，右上角按钮独立控制场景栏。双击鼠标中键自动平移缩放，使全部内容进入视野，不触发内容自动保存。画布菜单提供打开、查找、帮助、重置、深色模式、背景及本项目 GitHub。
+### 三种创建场景的方法
 
-![画布菜单](docs/local-canvas/canvas-menu.png)
+框选区域、保存当前视图、选择独立元素或组合。编辑侧栏的导航固定为 0.5 秒，平滑移动和缩放可被操作打断。
 
-快捷键遵循系统习惯：Mac 使用 Cmd/Option，Windows 使用 Ctrl/Alt，可在原生帮助页查看。
+![三种创建场景的方法 · new 白板演示](docs/local-canvas/features/scenes-create.webp)
 
-场景入口按“框选区域 / 选择元素”并排、“添加当前视图为场景”另起一行排列。先在画布选中独立元素或组合，再点“选择元素”，创建会跟随内容移动和尺寸变化的场景。若关联内容被删除，保留最后的导航区域；撤销删除后继续跟随。对跟随场景重新框选区域可解除关联。
+### 元素跟随、重框和重建跟随
 
-![元素与组合场景](docs/local-canvas/linked-scenes.png)
+关联元素移动或改变边界后，场景自动更新。右键重框可解除跟随，也可按当前选择重建跟随；删除关联内容时联动移除场景，首次可提示并记住偏好。
 
-场景列表支持 Shift 连续选择；右键删除前列出所选场景并要求确认。删除导航场景不删除画布上的文字和图形。
+![元素跟随、重框和重建跟随 · new 白板演示](docs/local-canvas/features/scenes-follow.webp)
 
-三点菜单只显示清楚分组的操作项。选择重命名或移动后才显示对应表单，输入与确认按钮分区；选择移动目标不会立即执行，回收站操作需确认。
+### 紧凑场景列表与批量操作
 
-| 操作列表 | 重命名表单 | 移动表单 |
-| --- | --- | --- |
-| ![实机分组菜单](docs/local-canvas/menu-actions.png) | ![实机重命名输入与确认区](docs/local-canvas/menu-rename.png) | ![实机移动目标与确认区](docs/local-canvas/menu-move.png) |
+标题直接编辑，拖动调整顺序；Shift 连续多选，右键批量删除前明确确认。删除导航区域不会删除画布图形。
 
-设计参考：[Primer ActionMenu](https://primer.style/product/components/action-menu/)、[Primer 色彩用法](https://primer.style/product/getting-started/foundations/color-usage/)。本项目 GitHub 菜单由系统浏览器打开；画布不连接远程编辑服务。
+![紧凑场景列表与批量操作 · new 白板演示](docs/local-canvas/features/scenes-list.webp)
 
-[演示面板统一字号实机截图](docs/local-canvas/presentation-fonts.png)
+### 全屏、自动演示与循环
 
-## 全屏演示
+从首页进入，手动翻页或自动演示；移动时长 0.5 / 1 / 1.5 / 2 秒，停留时间独立设置。支持循环和图层面板中的顺序、标题管理，退出恢复编辑视图。
 
-![实机全屏演示：底部翻页及临时画笔，左侧为 Excalidraw 原生画笔样式面板](docs/local-canvas/presentation-current.png)
+![全屏、自动演示与循环 · new 白板演示](docs/local-canvas/features/presentation.webp)
 
-临时画笔允许连续书写多笔，翻页及退出时清除；不写入文档、备份或 PDF。编辑和备份仍使用完整文档或 `.excalidraw` 格式。
+### 原生风格的临时画笔
 
-![演示面板：循环开关与独立的移动、停留时间](docs/local-canvas/presentation-loop.png)
+沿用原生描边、颜色、粗细、透明度、边框与线条风格，提供填充密度。翻页或退出时清除，不写入白板、备份或导出。
 
-自动演示每页停留可选 1、2、3、5、10、15、30 秒（默认 3 秒），与移动时长分别设置。循环默认关闭：关闭时到末页停止，开启时自动回到首页继续；记住开关偏好，但不会在重启后自行播放。打开图层面板或启用临时画笔时暂停自动播放。
+![原生风格的临时画笔 · new 白板演示](docs/local-canvas/features/presentation-ink.webp)
 
-![独立画布只读入口：禁止元素编辑，保留浏览与导航](docs/local-canvas/readonly-current.png)
+## 绘图与文字增强
 
-## 区域导出
+### 相对字号滑块与紧凑数字输入
 
-![统一导出菜单：框选范围与 PNG、SVG、PDF 格式](docs/local-canvas/export-current.png)
+保留 S / M / L / XL，在底部增加 10–100% 比例滑块和数字框，支持 Tab 输入。绑定文字按容器空间适配；自由文字按当前尺寸比例调整，后续文字继承实际字号。
 
-PNG、SVG、PDF 支持指定区域。PDF 以高分辨率图像嵌入页面；完整文档和 `.excalidraw` 保存整张白板，保留可编辑内容。
+![相对字号滑块与紧凑数字输入 · new 白板演示](docs/local-canvas/features/font-scale.webp)
 
-## 运行
+### 填充密度连续调节
 
-应用代码位于 `codex/local-canvas-p0` 分支，默认分支同步说明与图片。
+调节斜线与交叉线的疏密，实心始终铺满，尺寸与位置不变。同类图形继承密度，球标独立记忆；演示临时画笔同样适用。
+
+![填充密度连续调节 · new 白板演示](docs/local-canvas/features/fill-density.webp)
+
+### 等距自动整理
+
+框选或使用当前选择，进行纵向、横向、阵列整理，设置间隔；组合和绑定文字一起移动，可一键添加到跟随演示列表。
+
+![等距自动整理 · new 白板演示](docs/local-canvas/features/arrange.webp)
+
+### 自增球标
+
+点击画布连续放置圆圈数字，从 1 开始；可修改下一编号。使用原生字体和形状样式，手动调整大小后后续球标继承，保持正圆。
+
+![自增球标 · new 白板演示](docs/local-canvas/features/balloons.webp)
+
+## 导航、界面与导出
+
+### 文字、拼音与首字母搜索
+
+左侧独立搜索，匹配文字在画布与列表中高亮，点击定位并选中；支持中文全拼、首字母和混合拼音，Cmd/Ctrl+F 聚焦。
+
+![文字、拼音与首字母搜索 · new 白板演示](docs/local-canvas/features/search.webp)
+
+### 全览与快速定位
+
+双击中键按全部内容边界全览，不受固定最低比例限制；抓手平移后再次双击恢复编辑比例，右键保留当前视图。后续滚轮连续缩放，步长可在设置中选择。
+
+![全览与快速定位 · new 白板演示](docs/local-canvas/features/overview.webp)
+
+### 六主题与可伸缩侧栏
+
+GitHub、Reddit、VS Code、Notion、WeChat、Discord 风格，图标、色阶和柔和高亮分别适配。左右侧栏独立隐藏、显示并拖动宽度。
+
+![六主题与可伸缩侧栏 · new 白板演示](docs/local-canvas/features/themes-layout.webp)
+
+### 工具栏排序与独立只读
+
+开启排序后拖动绘图图标，重启保留。画布只读禁止元素编辑、移动和删除，保留平移缩放；原生工具锁仍表示连续绘制。
+
+![工具栏排序与独立只读 · new 白板演示](docs/local-canvas/features/toolbar-readonly.webp)
+
+### 集中导出与区域选择
+
+右上角统一导出 PNG / SVG / PDF，可指定区域、整张白板或场景分页 PDF。完整文档和 .excalidraw 保留可编辑内容与场景。
+
+![集中导出与区域选择 · new 白板演示](docs/local-canvas/features/exports.webp)
+
+## 本地与在线素材库
+
+### 逐个素材搜索与自动排列
+
+统一搜索本地及在线每个素材的名称、标签和内部文字，分区显示，并保留在线加载进度。Ctrl＋滚轮调预览大小，自动增加或减少列数，最小与 Logo 相当。
+
+![逐个素材搜索与自动排列 · new 白板演示](docs/local-canvas/features/library.webp)
+
+### 在线素材包与离线使用
+
+展开官方目录的素材包，显示缩略图；标题滚动冻结以便收起。素材可拖入画布，保存到本地后离线使用，面板仅手动关闭。也可在系统浏览器打开网页素材库，下载导入或确认安装回传。
+
+![在线素材包与离线使用 · new 白板演示](docs/local-canvas/features/library-online.webp)
+
+### 本地文件夹与素材保存位置
+
+只有“本地素材库”和“Excalidraw 在线素材库”两个可折叠根目录。右键创建、改名、删除分类文件夹（保留素材），多选移动、导出或确认删除；查看默认 / 当前保存路径并安全迁移，原文件保留。
+
+![本地文件夹与素材保存位置 · new 白板演示](docs/local-canvas/features/library-folders.webp)
+
+## 网页、视频、备份与 NAS
+
+### 通用 HTTPS 网页嵌入
+
+自己的网页、NAS 页面和允许嵌入的网站可作为原生图元拖动、缩放与删除。重开文档先询问加载，保留沙箱、权限和本地文件隔离；网站禁止嵌入时可在浏览器打开。
+
+![通用 HTTPS 网页嵌入 · new 白板演示](docs/local-canvas/features/embeds.webp)
+
+### 独立视频区与场景自动暂停
+
+YouTube / Bilibili 使用专门播放器，编辑与演示可播放、暂停和调整进度。播放中切换场景会自动暂停。动图中的视频位于模板以外的独立区域，演示时居中放大。
+
+![独立视频区与场景自动暂停 · new 白板演示](docs/local-canvas/features/video.webp)
+
+### WebDAV 设置、状态与手动备份
+
+设置提供说明气泡，凭据加密保存；灰灯 / 绿灯反映 WebDAV 实际验证结果，状态下拉可查看连接并手动上传完整备份。演示使用本机 WebDAV 测试端点。
+
+![WebDAV 设置、状态与手动备份 · new 白板演示](docs/local-canvas/features/webdav.webp)
+
+### NAS 网页版
+
+浏览器打开完整白板，服务端 SQLite 保存文件树、图形、场景和素材，刷新可恢复。提供登录保护、导入导出、备份与 Docker / Node 部署文件。动图为本机服务，实际 NAS 配置见部署文档。
+
+![NAS 网页版 · new 白板演示](docs/local-canvas/features/nas-web.webp)
+
+### 中英界面与正式 / 测试更新渠道
+
+Logo 打开设置；简体中文 / 英文同时覆盖应用外层与原生画布。可保存缩放步长、只读、动画等偏好，检查 GitHub 正式 / 测试更新，可选下载并校验 SHA-256。
+
+![中英界面与正式 / 测试更新渠道 · new 白板演示](docs/local-canvas/features/settings.webp)
+
+## 使用边界与部署
+
+- macOS 提供 Apple Silicon ZIP，Windows 提供 x64 安装版与免安装版；包内含离线字体和编辑资源。Mac 为临时完整性签名，未公证；Windows 未进行 Authenticode 签名，Windows 与真实 NAS 仍需实机验收。
+- 视频受网络、地区和平台嵌入许可影响；普通网页不能统一保证自动暂停。网页版 Bilibili 切场景会重载停止播放，进度可能重置。PDF 是栅格页面，图片 / PDF 不携带交互网页或可播放视频。
+- WebDAV 是手动备份与恢复，不是双向同步或多人协作。桌面与 NAS 数据库独立，可用完整文档 / 备份迁移。NAS 需持久化 `/data`，公网访问应使用 HTTPS。
+- 在线素材首次逐包建立本次会话索引，关键词在本地匹配；缺少名称的条目依靠已有文字 / 标签，不提供图像语义搜索。请分别遵守社区素材许可。
+- 演示临时画笔快捷键撤销曾有偶发失败，仍保留跟踪。[验证与已知事项](https://github.com/layzerff/excalidraw/blob/codex/local-canvas-p0/desktop/VALIDATION.md)。Mac 与免安装版更新包仍需手动替换。
+
+## 运行源码
+
+应用代码在 `codex/local-canvas-p0` 分支；默认分支同步功能说明和演示资源。
 
 ```sh
 git clone --branch codex/local-canvas-p0 https://github.com/layzerff/excalidraw.git
@@ -111,10 +194,8 @@ npm run build
 npm start
 ```
 
-当前为开发版，已在 macOS Apple Silicon 验证；Windows 实机验证、发布签名及完整输入法/手写笔回归待完成。当前提供原生中英文字体；任意自定义字体上传仍在后续清单。具体完成范围见[修改清单](https://github.com/layzerff/excalidraw/blob/codex/local-canvas-p0/desktop/NEXT-ITERATION.md)。
-
-Windows x64 安装版（NSIS）与免安装版已完成交叉构建及包完整性检查，内容与当前开发分支一致；尚未在 Windows 实机启动，也未进行 Windows 代码签名。界面截图来自 macOS 打包应用测试。
+[桌面端说明](https://github.com/layzerff/excalidraw/blob/codex/local-canvas-p0/desktop/README.md) · [NAS 配置](https://github.com/layzerff/excalidraw/blob/codex/local-canvas-p0/desktop/web/README.md) · [完整更新记录](https://github.com/layzerff/excalidraw/blob/codex/local-canvas-p0/desktop/CHANGELOG.md) · [后续清单](https://github.com/layzerff/excalidraw/blob/codex/local-canvas-p0/desktop/NEXT-ITERATION.md)
 
 ## 上游与许可证
 
-感谢 [Excalidraw](https://github.com/excalidraw/excalidraw)。保留 [MIT LICENSE](LICENSE)；第三方依赖及字体声明随桌面构建生成。
+感谢 [Excalidraw](https://github.com/excalidraw/excalidraw)。保留 [MIT LICENSE](LICENSE)，第三方依赖与字体声明随构建提供。[上游原版介绍](README.upstream.md)。主题名称及演示中的第三方图标仅用于说明，不代表合作或背书。

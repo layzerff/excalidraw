@@ -1,0 +1,11 @@
+**
+!dist/
+!dist/**
+!electron/
+!electron/store.cjs
+!electron/webdav.cjs
+!electron/libraries.cjs
+!web/
+!web/server.cjs
+!web/Dockerfile
+!web/Dockerfile.ds918

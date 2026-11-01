@@ -47,3 +47,42 @@ export function followScenes(scenes, elements, getBounds) {
   });
   return changed ? next : scenes;
 }
+
+// Keep cascade history only for the current editor's undo session. Reopening a
+// document starts a fresh native undo history, so deleted scenes stay deleted.
+export function cascadeScenes(scenes, before, after, archive) {
+  const live = new Set(after.filter((e) => !e.isDeleted).map((e) => e.id));
+  const removed = before.filter((e) => !e.isDeleted && !live.has(e.id));
+  const removedIds = new Set(removed.map((e) => e.id));
+  const removedGroups = new Set(removed.flatMap((e) => e.groupIds || []));
+  const deleted = scenes.filter(
+    (s) =>
+      s.binding &&
+      (s.binding.elementIds.some((id) => removedIds.has(id)) ||
+        s.binding.groupIds.some((id) => removedGroups.has(id))),
+  );
+  for (const s of deleted)
+    archive.set(s.id, {
+      scene: s,
+      index: scenes.indexOf(s),
+      removed: removed
+        .filter(
+          (e) =>
+            s.binding.elementIds.includes(e.id) ||
+            e.groupIds?.some((g) => s.binding.groupIds.includes(g)),
+        )
+        .map((e) => e.id),
+    });
+  let next = scenes.filter((s) => !deleted.includes(s));
+  for (const [id, entry] of archive) {
+    if (entry.removed.length && entry.removed.every((id) => live.has(id))) {
+      if (!next.some((s) => s.id === id))
+        next.splice(Math.min(entry.index, next.length), 0, entry.scene);
+      archive.delete(id);
+    }
+  }
+  return {
+    scenes: deleted.length || next.length !== scenes.length ? next : scenes,
+    deleted,
+  };
+}

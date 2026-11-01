@@ -5,7 +5,13 @@ import { tmpdir } from 'node:os';
 const profile = mkdtempSync(tmpdir() + '/canvas-dav-');
 let app;
 const files = new Map();
+let available = true;
 const server = createServer(async (req, res) => {
+  if (!available) {
+    res.writeHead(503);
+    res.end();
+    return;
+  }
   if (
     req.headers.authorization !==
     'Basic ' + Buffer.from('test:password').toString('base64')
@@ -36,19 +42,23 @@ const server = createServer(async (req, res) => {
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 try {
   app = await electron.launch({
-    args: [process.cwd()],
+    executablePath: process.env.LOCAL_CANVAS_EXECUTABLE || undefined,
+    args: process.env.LOCAL_CANVAS_EXECUTABLE ? [] : [process.cwd()],
     env: { ...process.env, LOCAL_CANVAS_DATA: profile },
   });
   const page = await app.firstWindow();
   await expect(page.locator('.excalidraw')).toBeVisible();
-  await page.getByText('工作区管理', { exact: true }).click();
+  await expect(page.locator('.network-status')).toHaveText('离线');
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect(page.locator('.network-status')).toHaveText('离线');
+  await page.getByRole('button', { name: '打开设置', exact: true }).click();
   await page.getByRole('button', { name: 'WebDAV 设置', exact: true }).click();
   await page
     .getByRole('textbox', { name: 'WebDAV 地址' })
     .fill(`http://127.0.0.1:${server.address().port}/backup/`);
   await page.getByRole('textbox', { name: 'WebDAV 用户名' }).fill('test');
   await page.getByRole('textbox', { name: 'WebDAV 密码' }).fill('password');
-  await page.getByRole('checkbox', {name:/允许 HTTP/}).check();
+  await page.getByRole('checkbox', { name: /允许 HTTP/ }).check();
   await page.getByRole('button', { name: '保存设置', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('连接设置已加密保存');
   await page.getByRole('button', { name: '测试连接', exact: true }).click();
@@ -58,11 +68,38 @@ try {
     .click();
   await expect(page.getByRole('dialog')).toContainText('备份上传成功');
   expect(files.size).toBe(1);
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.getByRole('button', { name: '连接状态', exact: true }).click();
+  await expect(page.locator('.connection-popover')).toContainText(
+    'WebDAV 最近连接成功',
+  );
+  await page
+    .getByRole('button', { name: '立即同步（上传备份）', exact: true })
+    .click();
+  await expect.poll(() => files.size).toBe(2);
+  await expect(page.locator('.connection-popover')).toContainText(
+    'WebDAV 最近连接成功',
+  );
+  await page.getByRole('button', { name: '连接状态', exact: true }).click();
+  await expect(page.locator('.network-status')).toHaveText('在线');
+  available = false;
+  await page.getByRole('button', { name: '连接状态', exact: true }).click();
+  await page.getByRole('button', { name: '测试连接', exact: true }).click();
+  await expect(page.locator('.network-status')).toHaveText('离线');
+  available = true;
+  await page.getByRole('button', { name: '测试连接', exact: true }).click();
+  await expect(page.locator('.network-status')).toHaveText('在线');
+  await page.getByRole('button', { name: '连接状态', exact: true }).click();
   const bundle = JSON.parse([...files.values()][0]);
   expect(bundle.format).toBe('local-canvas-workspace');
   expect(bundle.settings.some((s) => s.key.startsWith('webdav'))).toBe(false);
   expect(JSON.stringify(bundle)).not.toContain('password');
   const before = await page.evaluate(() => window.workspace.invoke('list'));
+  await page.getByRole('button', { name: '打开设置', exact: true }).click();
+  await page.getByRole('button', { name: 'WebDAV 设置', exact: true }).click();
+  await page
+    .getByRole('textbox', { name: '远程备份文件名' })
+    .fill([...files.keys()][0].split('/').pop());
   await page.getByRole('button', { name: '恢复指定备份', exact: true }).click();
   await page
     .getByRole('button', { name: '确认下载并导入', exact: true })
@@ -77,6 +114,7 @@ try {
       window.workspace.invoke('getSetting', 'webdavSecret'),
     ),
   ).toBe(null);
+  await page.getByRole('button', { name: '打开设置', exact: true }).click();
   await page.getByRole('button', { name: 'WebDAV 设置', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'WebDAV 密码' })).toHaveValue(
     '',
@@ -84,6 +122,8 @@ try {
   await expect(page.getByRole('button', { name: '测试连接' })).toBeEnabled();
   await page.getByRole('button', { name: '移除连接', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('已移除本机连接设置');
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(page.locator('.network-status')).toHaveText('离线');
   console.log(
     'PASS: encrypted credential settings, real local WebDAV PROPFIND/PUT/GET, credentials excluded from backup, confirmed additive restore, secret inaccessible via generic IPC, forget settings',
   );

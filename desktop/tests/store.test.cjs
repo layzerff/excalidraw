@@ -176,3 +176,22 @@ test('malformed backup and scene bounds leave database unchanged', (t) => {
     /区域/,
   );
 });
+
+test('balloon inherited dimensions reject malformed imported metadata', () => {
+  const { payload } = require('../electron/store.cjs');
+  const base = { elements: [], files: {}, appState: {}, scenes: [] };
+  assert.throws(
+    () =>
+      payload({
+        ...base,
+        balloonSize: { diameter: 56, fontSize: 20, width: 'bad', height: 56 },
+      }),
+    /球标尺寸/,
+  );
+  assert.doesNotThrow(() =>
+    payload({
+      ...base,
+      balloonSize: { diameter: 56, fontSize: 20, width: 56, height: 56 },
+    }),
+  );
+});

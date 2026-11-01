@@ -16,6 +16,22 @@ const { Store, payload } = require('./store.cjs');
 const { backup: backupDatabase } = require('node:sqlite');
 const { isAbsolute } = require('node:path');
 const webdav = require('./webdav.cjs');
+const { Updates } = require('./updates.cjs');
+const {
+  LibraryLink,
+  downloadLibrary,
+  libraryCatalog,
+  validateLibrary,
+} = require('./libraries.cjs');
+const libraryLinks = new LibraryLink();
+let approvedEmbeds = new Set();
+app.on('open-url', (event, value) => {
+  event.preventDefault();
+  if (libraryLinks.receive(value)) {
+    win?.show();
+    win?.focus();
+  }
+});
 let win, store;
 app.setName('Local Canvas');
 app.setPath(
@@ -24,7 +40,8 @@ app.setPath(
 );
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, argv) => {
+    argv.forEach((value) => libraryLinks.receive(value));
     win?.show();
     win?.focus();
   });
@@ -47,6 +64,8 @@ else {
         storageRoot = location;
       }
       store = new Store(join(storageRoot, 'workspace.sqlite'));
+      const { LibraryStore } = require('./library-store.cjs');
+      const materials = new LibraryStore(store, storageRoot);
       const getLink = (id) =>
         JSON.parse(store.getSetting(`documentFile:${id}`) || 'null');
       const backupDir = join(storageRoot, 'backups');
@@ -74,7 +93,69 @@ else {
         )
           throw new Error('拒绝未知来源');
       };
+      const updater = new Updates({
+        directory: join(app.getPath('userData'), 'updates'),
+        current: app.getVersion(),
+        platform: process.platform,
+        arch: process.arch,
+        portable: !!process.env.PORTABLE_EXECUTABLE_FILE,
+      });
+      if (!process.defaultApp) app.setAsDefaultProtocolClient('localcanvas');
       const operations = {
+        setEmbedOrigins: async (origins) => {
+          const { parseEmbed } = await import('../dist/embeds.mjs');
+          if (
+            !Array.isArray(origins) ||
+            origins.length > 1000 ||
+            origins.some((o) => parseEmbed(o)?.origin !== o)
+          )
+            throw Error('无效的嵌入站点');
+          approvedEmbeds = new Set(origins);
+          return true;
+        },
+        openExternalPage: async (value) => {
+          const { parseEmbed } = await import('../dist/embeds.mjs');
+          const parsed = parseEmbed(value);
+          if (!parsed) throw Error('只允许 HTTPS 网页地址');
+          return shell.openExternal(parsed.url);
+        },
+        openLibraries: () => shell.openExternal(libraryLinks.catalog()),
+        libraryCatalog: () => libraryCatalog(),
+        libraryRead: (id) => materials.open(id),
+        librarySave: (items) => materials.save(items),
+        libraryOrganize: (folders, assignments) =>
+          materials.organize(folders, assignments),
+        libraryStorageInfo: () => materials.info(),
+        changeLibraryStorage: async () => {
+          const result = await dialog.showOpenDialog(win, {
+            title: '选择素材库保存文件夹',
+            defaultPath: materials.location(),
+            properties: ['openDirectory', 'createDirectory'],
+          });
+          if (result.canceled) return null;
+          return materials.relocate(result.filePaths[0]);
+        },
+        pendingLibrary: () => libraryLinks.take(),
+        downloadLibrary: (value) => downloadLibrary(value),
+        updateInfo: () => updater.info(),
+        checkUpdates: (channel) =>
+          updater.check(channel === 'preview' ? 'preview' : 'stable'),
+        downloadUpdate: () => updater.download(),
+        cancelUpdateDownload: () => updater.cancel(),
+        openReleases: () =>
+          shell.openExternal('https://github.com/layzerff/excalidraw/releases'),
+        installUpdate: async () => {
+          const target = updater.verifiedPath();
+          if (
+            process.platform === 'win32' &&
+            !process.env.PORTABLE_EXECUTABLE_FILE
+          ) {
+            const error = await shell.openPath(target);
+            if (error) throw Error(error);
+            setTimeout(() => app.quit(), 1000);
+          } else shell.showItemInFolder(target);
+          return true;
+        },
         openProject: () =>
           shell.openExternal('https://github.com/layzerff/excalidraw'),
         list: () => store.list(),
@@ -198,6 +279,8 @@ else {
                 appState: value.appState || {},
                 files: value.files || {},
                 scenes: value.localCanvas?.scenes || [],
+                balloonNext: value.localCanvas?.balloonNext || 1,
+                balloonSize: value.localCanvas?.balloonSize,
                 libraryItems: value.localCanvas?.libraryItems || [],
               }
             : value.format === 'local-canvas-document' && value.version === 1
@@ -263,6 +346,16 @@ else {
             throw new Error('目标 Local Canvas 文件夹非空，请选择其他位置');
           fs.mkdirSync(target, { recursive: true });
           await backupDatabase(store.db, join(target, 'workspace.sqlite'));
+          if (
+            materials.location() === join(storageRoot, 'materials') &&
+            fs.existsSync(materials.location())
+          ) {
+            fs.cpSync(materials.location(), join(target, 'materials'), {
+              recursive: true,
+              force: false,
+              errorOnExist: true,
+            });
+          }
           fs.cpSync(backupDir, join(target, 'backups'), {
             recursive: true,
             force: false,
@@ -338,7 +431,7 @@ else {
             !Array.isArray(value.libraryItems || value.library)
           )
             throw new Error('请选择有效的 .excalidrawlib 素材库');
-          return value;
+          return validateLibrary(value);
         },
         async exportPDF(title, pages) {
           if (
@@ -416,6 +509,12 @@ else {
                 elements: data.elements,
                 appState: data.appState,
                 files: data.files,
+                localCanvas: {
+                  scenes: data.scenes,
+                  balloonNext: data.balloonNext || 1,
+                  balloonSize: data.balloonSize,
+                  libraryItems: data.libraryItems || [],
+                },
               }
             : {
                 format: 'local-canvas-document',
@@ -443,7 +542,10 @@ else {
               elements: value.elements,
               appState: value.appState || {},
               files: value.files || {},
-              scenes: [],
+              scenes: value.localCanvas?.scenes || [],
+              balloonNext: value.localCanvas?.balloonNext || 1,
+              balloonSize: value.localCanvas?.balloonSize,
+              libraryItems: value.localCanvas?.libraryItems || [],
             };
             title = '导入的白板';
           } else throw new Error('请选择 .excalidraw 或 Local Canvas 文档');
@@ -508,10 +610,10 @@ else {
           event.returnValue = { error: error.message };
         }
       });
-      const { allowVideoRequest } = await import('../dist/videos.mjs');
+      const { allowEmbedRequest } = await import('../dist/embeds.mjs');
       // Keep editor networking blocked; only approved embedded players may load media.
       session.defaultSession.webRequest.onBeforeRequest((details, callback) =>
-        callback({ cancel: !allowVideoRequest(details) }),
+        callback({ cancel: !allowEmbedRequest(details, approvedEmbeds) }),
       );
       session.defaultSession.webRequest.onBeforeSendHeaders(
         (details, callback) => {
@@ -594,6 +696,8 @@ function writeLinked(link, title, data) {
         localCanvas: {
           version: 1,
           scenes: data.scenes,
+          balloonNext: data.balloonNext || 1,
+          balloonSize: data.balloonSize,
           libraryItems: data.libraryItems || [],
         },
       }

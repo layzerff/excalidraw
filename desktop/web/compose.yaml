@@ -1,0 +1,15 @@
+services:
+  local-canvas:
+    build:
+      context: ..
+      dockerfile: web/Dockerfile
+    ports:
+      - '8088:8080'
+    environment:
+      CANVAS_USERNAME: ${CANVAS_USERNAME:?设置登录账号}
+      CANVAS_PASSWORD: ${CANVAS_PASSWORD:?设置至少12字符密码}
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true

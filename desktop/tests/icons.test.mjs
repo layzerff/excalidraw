@@ -32,7 +32,7 @@ test('macOS icon includes retina and 1024px PNG resources', () => {
   assert.ok(types.includes('icp5'));
   assert.ok(types.includes('icp6'));
 });
-test('Mac platform icon has optical artwork bounds and transparent platform padding', () => {
+test('Mac legacy tile uses an opaque matte and retains complete inset artwork', () => {
   const png = readFileSync('build/app-icon-mac.png'),
     chunks = [];
   assert.equal(png.readUInt32BE(16), 1024);
@@ -71,7 +71,7 @@ test('Mac platform icon has optical artwork bounds and transparent platform padd
     ys = [];
   for (let y = 0; y < 1024; y++)
     for (let x = 0; x < 1024; x++)
-      if (rows[y * stride + x * 4 + 3] > 8) {
+      if (rows[y * stride + x * 4 + 3] > 8 && rows[y * stride + x * 4] < 100 && rows[y * stride + x * 4 + 2] > 140) {
         xs.push(x);
         ys.push(y);
       }
@@ -81,10 +81,15 @@ test('Mac platform icon has optical artwork bounds and transparent platform padd
       [1024, -1],
     );
   for (const [min, max] of [bounds(xs), bounds(ys)]) {
-    assert.ok(min >= 95 && min <= 104);
-    assert.ok(max <= 928 && max >= 919);
-    assert.ok(max - min >= 815 && max - min <= 833);
+    assert.ok(min >= 2 && min <= 28, `art starts at ${min}`);
+    assert.ok(max <= 1021 && max >= 995, `art ends at ${max}`);
+    assert.ok(max - min >= 975);
   }
-  assert.equal(rows[3], 0);
-  assert.equal(rows[stride * 1024 - 1], 0);
+  for (let i = 0; i < 1024; i++) {
+    assert.equal(rows[i * 4 + 3], 255);
+    assert.equal(rows[1023 * stride + i * 4 + 3], 255);
+    assert.equal(rows[i * stride + 3], 255);
+    assert.equal(rows[i * stride + 1023 * 4 + 3], 255);
+  }
+  assert.deepEqual([...rows.subarray(0,4)], [255,255,255,255]);
 });

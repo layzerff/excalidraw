@@ -17,6 +17,35 @@ function payload(value) {
     !value.appState
   )
     throw new Error('无效的白板数据');
+  if (
+    value.balloonNext !== undefined &&
+    (!Number.isSafeInteger(value.balloonNext) ||
+      value.balloonNext < 1 ||
+      value.balloonNext > 999999)
+  )
+    throw new Error('球标下一编号无效');
+  if (
+    value.balloonSize !== undefined &&
+    (!value.balloonSize ||
+      !['diameter', 'fontSize'].every(
+        (k) =>
+          Number.isFinite(value.balloonSize[k]) &&
+          value.balloonSize[k] > 0 &&
+          value.balloonSize[k] < 1000000,
+      ))
+  )
+    throw new Error('球标尺寸无效');
+  if (
+    value.balloonSize &&
+    ['width', 'height'].some(
+      (k) =>
+        value.balloonSize[k] !== undefined &&
+        (!Number.isFinite(value.balloonSize[k]) ||
+          value.balloonSize[k] <= 0 ||
+          value.balloonSize[k] >= 1000000),
+    )
+  )
+    throw new Error('球标尺寸无效');
   const ids = new Set();
   for (const s of value.scenes) {
     if (!s || typeof s.id !== 'string' || ids.has(s.id))
@@ -294,6 +323,9 @@ class Store {
   }
   backup() {
     return {
+      ...(this.librarySnapshot
+        ? { materialLibrary: this.librarySnapshot() }
+        : {}),
       format: 'local-canvas-workspace',
       version: 1,
       created: new Date().toISOString(),
@@ -333,6 +365,8 @@ class Store {
         p = map.get(p).parent;
       }
     }
+    if (bundle.materialLibrary && this.libraryRestore)
+      this.libraryRestore(bundle.materialLibrary);
     // Import into a new folder, retaining all existing documents and remapping IDs.
     return this.transaction(() => {
       const root = this.create(

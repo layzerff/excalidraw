@@ -1,108 +1,142 @@
-import React, { useEffect, useState } from 'react';
-import { parseVideo } from './videos.mjs';
-export function VideoLayer({ elements, state, interact, bridge, pauseEpoch }) {
-  const [active, setActive] = useState(null);
-  const zoom = state?.zoom.value || 1;
-  const activeElement = elements.find((element) => element.id === active);
-  const tooSmall = (element) =>
-    element.width * zoom < 200 || element.height * zoom < 228;
-  const outside = !!(
-    activeElement &&
-    state &&
-    (tooSmall(activeElement) ||
-      (activeElement.x + state.scrollX) * zoom + activeElement.width * zoom <
-        0 ||
-      (activeElement.y + state.scrollY) * zoom + activeElement.height * zoom <
-        0 ||
-      (activeElement.x + state.scrollX) * zoom > state.width ||
-      (activeElement.y + state.scrollY) * zoom > state.height)
-  );
+import { translate as __ui } from './i18n.mjs';
+import React, { useEffect, useRef, useState } from 'react';
+import { parseEmbed } from './embeds.mjs';
+// Native embeddable containers pass inactive pointer events to the canvas.
+export function VideoEmbed({
+  link,
+  pauseEpoch,
+  bridge,
+  allowed = false,
+  requestConsent,
+}) {
+  const embed = parseEmbed(link);
+  const video = embed?.video,
+    frame = useRef(null),
+    previousEpoch = useRef(pauseEpoch);
+  const [failed, setFailed] = useState(false),
+    [generation, setGeneration] = useState(0);
   useEffect(() => {
-    if (!active) return;
-    let disposed = false;
+    if (previousEpoch.current === pauseEpoch) return;
+    previousEpoch.current = pauseEpoch;
+    if (!frame.current || !video) return;
+    frame.current.contentWindow?.postMessage(
+      video.provider === 'YouTube'
+        ? JSON.stringify({
+            event: 'command',
+            func: 'pauseVideo',
+            args: [],
+          })
+        : {
+            type: 'pause',
+          },
+      new URL(video.src).origin,
+    );
+    // Bilibili documents embed parameters, not a public pause command. A web
+    // browser cannot inspect cross-origin media: replace that player to stop it.
+    if (bridge.kind === 'web' && video.provider === 'Bilibili') {
+      setGeneration((g) => g + 1);
+      return;
+    }
     bridge
       .invoke('pauseVideos')
       .then((paused) => {
-        if (!disposed && !paused)
-          setActive((current) => (current === active ? null : current));
+        if (!paused && video.provider === 'Bilibili')
+          setGeneration((g) => g + 1);
       })
       .catch(() => {
-        if (!disposed)
-          setActive((current) => (current === active ? null : current));
+        if (video.provider === 'Bilibili') setGeneration((g) => g + 1);
       });
-    return () => {
-      disposed = true;
-    };
-  }, [pauseEpoch, outside]);
-  if (!state) return null;
+  }, [pauseEpoch, bridge, video?.src]);
+  if (!embed) return null;
+  if (!allowed)
+    return (
+      <div className="embed-placeholder">
+        <strong>{embed.origin}</strong>
+        <p>{__ui('外部内容尚未加载')}</p>
+        <small>{__ui('双击此区域后可操作按钮')}</small>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            requestConsent(embed.origin);
+          }}
+        >
+          {__ui('选择是否加载')}
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            bridge.invoke('openExternalPage', embed.url);
+          }}
+        >
+          {__ui('在浏览器打开')}
+        </button>
+      </div>
+    );
   return (
-    <div className="video-layer">
-      {elements
-        .filter(
-          (e) => !e.isDeleted && e.type === 'embeddable' && parseVideo(e.link),
-        )
-        .map((element) => {
-          const video = parseVideo(element.link);
-          const x = (element.x + state.scrollX) * zoom,
-            y = (element.y + state.scrollY) * zoom;
-          const width = element.width * zoom,
-            height = element.height * zoom;
-          const hidden =
-            (active === element.id && tooSmall(element)) ||
-            x + width < 0 ||
-            y + height < 0 ||
-            x > state.width ||
-            y > state.height;
-          if (hidden && active !== element.id) return null;
-          return (
-            <section
-              key={element.id}
-              className={`video-card ${active === element.id ? 'video-active' : ''}`}
-              style={{
-                left: x,
-                top: y,
-                width,
-                height,
-                visibility: hidden ? 'hidden' : 'visible',
-                transform: `rotate(${element.angle || 0}rad)`,
-              }}
-            >
-              {active === element.id ? (
-                <>
-                  <div className="video-toolbar">
-                    <button onClick={() => setActive(null)}>
-                      停止 / 返回画布
-                    </button>
-                  </div>
-                  <iframe
-                    title={`${video.provider} 视频`}
-                    src={video.src}
-                    allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
-                    allowFullScreen
-                    sandbox="allow-scripts allow-same-origin allow-presentation"
-                    referrerPolicy="strict-origin-when-cross-origin"
-                  />
-                </>
-              ) : (
-                <button
-                  className="video-start"
-                  disabled={tooSmall(element)}
-                  title={
-                    tooSmall(element)
-                      ? '请放大画布，使播放器至少达到 200 × 200 像素'
-                      : ''
-                  }
-                  onClick={() => {
-                    interact();
-                    setActive(element.id);
-                  }}
-                >
-                  ▶ 操作 {video.provider} 视频
-                </button>
-              )}
-            </section>
-          );
-        })}
+    <div className="video-embed">
+      <iframe
+        key={generation}
+        ref={frame}
+        title={video ? '' + video.provider + __ui(' 视频') : embed.origin}
+        src={video?.src || embed.url}
+        loading="lazy"
+        onError={() => setFailed(true)}
+        allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+        allowFullScreen
+        sandbox={
+          video
+            ? 'allow-scripts allow-same-origin allow-presentation'
+            : 'allow-scripts allow-forms allow-presentation'
+        }
+        referrerPolicy="strict-origin-when-cross-origin"
+      />
+      <div className="embed-browser-link">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            bridge.invoke('openExternalPage', embed.url);
+          }}
+        >
+          {__ui('在浏览器打开')}
+        </button>
+        <span>
+          {failed ? __ui('页面加载失败') : __ui('网站禁止嵌入或未显示？')}
+        </span>
+      </div>
+      {failed && (
+        <div className="video-load-error">
+          {__ui('视频加载失败')}{' '}
+          <button
+            onClick={() => {
+              setFailed(false);
+              setGeneration((g) => g + 1);
+            }}
+          >
+            {__ui('重试 ')}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+// Only this small button captures events, outside the player picture.
+export function VideoControls({ state, elements, exit }) {
+  const active = state?.activeEmbeddable;
+  const el = elements.find((e) => e.id === active?.element?.id && !e.isDeleted);
+  if (active?.state !== 'active' || !el || !parseEmbed(el.link)) return null;
+  const z = state.zoom.value;
+  return (
+    <div
+      className="video-edit-control"
+      style={{
+        left: Math.max(
+          8,
+          Math.min(state.width - 190, (el.x + state.scrollX) * z),
+        ),
+        top: Math.max(8, (el.y + state.scrollY) * z - 34),
+      }}
+    >
+      <button onClick={exit}>{__ui('返回画布编辑 \xB7 Esc')}</button>
     </div>
   );
 }

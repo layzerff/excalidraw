@@ -1,12 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { THEMES, themeId, themeStyle } from '../src/themes.mjs';
-test('four complete themes with safe persisted-value fallback', () => {
+test('six complete themes with safe persisted-value fallback', () => {
   assert.deepEqual(Object.keys(THEMES), [
     'github',
     'reddit',
     'vscode',
     'notion',
+    'wechat',
+    'discord',
   ]);
   for (const id of Object.keys(THEMES)) {
     const style = themeStyle(id);
