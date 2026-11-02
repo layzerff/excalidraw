@@ -1,6 +1,6 @@
 # Local Canvas · 本地无限画布
 
-基于官方 MIT 授权的 Excalidraw React 组件，提供 Windows / macOS 本地工作区，以及可部署到 NAS 的网页版。原生绘图、手写字体、箭头、组合、Frame 与撤销重做继续由官方组件提供。
+基于官方 MIT 授权的 Excalidraw React 组件，提供 Windows / macOS 本地工作区，以及可部署到 NAS 的网页版。
 
 [下载 v0.5.0](https://github.com/layzerff/excalidraw/releases/tag/v0.5.0) · [完整更新清单](https://github.com/layzerff/excalidraw/blob/codex/local-canvas-p0/desktop/CHANGELOG.md) · [运行与开发](https://github.com/layzerff/excalidraw/tree/codex/local-canvas-p0/desktop) · [NAS 部署](https://github.com/layzerff/excalidraw/blob/codex/local-canvas-p0/desktop/web/README.md)
 
@@ -8,9 +8,8 @@
 
 ## 与 Excalidraw 开源编辑器的区别
 
-在原生画布之外，增加本地文档管理、可跟随元素的场景、全屏演示、相对字号与填充密度、自动整理、自增球标、统一素材管理、WebDAV 备份及 NAS 网页工作区。无需 Excalidraw+，不调用其付费服务。
+在原生画布之外，增加本地文档管理、可跟随元素的场景、全屏演示、相对字号与填充密度、自动整理、自增球标、统一素材管理、WebDAV 备份及 NAS 网页工作区。
 
-以下均为真实界面的全彩 WebP 动图，以用户“new”白板的演示副本录制。字号和填充聚焦居中的图元；视频置于独立区域后再居中放大。字幕与指针高亮是录制标注，原白板未改动。点击动图可查看原尺寸。
 
 ## 本地文档与可靠保存
 
@@ -25,12 +24,6 @@
 文字、图形、颜色等内容变更自动保存；平移、缩放和场景导航不触发内容写入。Cmd/Ctrl+S 同时记录当前视图并写回关联文件；另存为可选择位置，“文件信息”查看路径，工作区也可迁移。
 
 ![自动保存、手动视图保存与另存为 · new 白板演示](docs/local-canvas/features/save-files.webp)
-
-### 备份恢复与回收站
-
-完整工作区备份包含文档、场景、图片及本地素材目录；恢复导入新文件夹。回收站可恢复误删，清空前再次确认。独立文件和已有备份保留。
-
-![备份恢复与回收站 · new 白板演示](docs/local-canvas/features/backup-trash.webp)
 
 ## 场景与全屏演示
 
